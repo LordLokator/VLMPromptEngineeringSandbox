@@ -1,0 +1,16 @@
+loguru
+transformers==4.46.3
+torch==2.2.0
+opencv-python
+ffmpeg-python
+imageio-ffmpeg
+imageio
+decord
+accelerate
+wheel
+
+numpy==1.24.4
+Flask
+flask_socketio
+flask-cors
+python-socketio[client]
