@@ -8,9 +8,8 @@ import ffmpeg
 import os
 import torch
 
-from utils.prompting_management import get_conv
 from utils.file_management import makedir, full_path
-from utils.vlm_wrapper import VLM
+from utils.vlm_wrapper import VLM, get_conv
 
 
 from loguru import logger
@@ -32,19 +31,19 @@ def main():
         os.mkdir(f"{SAVE_TO_FOLDER}")
         logger.debug(f'Created folder [{SAVE_TO_FOLDER}].')
 
-    # VLM()
-    model: Videollama3Qwen2ForCausalLM = AutoModelForCausalLM.from_pretrained(
-        MODEL_PATH,
-        trust_remote_code=True,
-        device_map={"": DEVICE},
-        torch_dtype=torch.bfloat16,
-        attn_implementation="flash_attention_2"
-    )
+    vlm_model = VLM()
+    # model: Videollama3Qwen2ForCausalLM = AutoModelForCausalLM.from_pretrained(
+    #     MODEL_PATH,
+    #     trust_remote_code=True,
+    #     device_map={"": DEVICE},
+    #     torch_dtype=torch.bfloat16,
+    #     attn_implementation="flash_attention_2"
+    # )
 
-    processor: Videollama3Qwen2Processor = AutoProcessor.from_pretrained(
-        MODEL_PATH,
-        trust_remote_code=True
-    )
+    # processor: Videollama3Qwen2Processor = AutoProcessor.from_pretrained(
+    #     MODEL_PATH,
+    #     trust_remote_code=True
+    # )
 
     logger.info("Instantiated models.")
 
@@ -65,49 +64,16 @@ def main():
         makedir(f"{SAVE_TO_FOLDER}/{day_folder}")
 
         conversation = get_conv(video_path, FPS, MAX_FRAMES, prompt)
-
-        try:
-            # VLM processor inputs. Move to VLM
-            processed_inputs = processor(
-                conversation=conversation,
-                add_system_prompt=True,
-                add_generation_prompt=True,
-                return_tensors="pt"
-            )
-            inputs = {
-                k: v.to(DEVICE) if isinstance(v, torch.Tensor) else v for k, v in processed_inputs.items()
-            }
-        except KeyboardInterrupt as e:
-            logger.info(f"Keyboard Interrupt, shutting down...")
-            raise e
-        except Exception as e:
-            logger.error(f"Error occured on VLM input preprocess: {e}")
-
-        if "pixel_values" in inputs:
-            inputs["pixel_values"] = inputs["pixel_values"].to(torch.bfloat16)
-
-        # VLM generate
-        output_ids = model.generate(
-            **inputs,
-            max_new_tokens=MAX_NEW_TOKENS,
-            temperature=TEMP,
-        )
-        raw_output: str = processor.batch_decode(
-            output_ids,
-            skip_special_tokens=True
-        )[0].strip()
+        model_output = vlm_model.forward(conversation)
+        raw_output: str = model_output[0].strip()
 
         report = f"At {hour}:{minute}, {MODEL_NAME} says: {raw_output}"
         logger.info(report)
 
         # region  output handling
 
-        cmp_output = raw_output.casefold()
-
         report_folder_path = f"{SAVE_TO_FOLDER}/{day_folder}/.../"
         makedir(report_folder_path)
-
-        ...
 
         # endregion
 
