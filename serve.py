@@ -1,14 +1,8 @@
 import sys
-from transformers import AutoModelForCausalLM, AutoProcessor
-from VideoLLaMA3.inference.transformers_api.modeling_videollama3 import Videollama3Qwen2ForCausalLM
-from VideoLLaMA3.inference.transformers_api.processing_videollama3 import Videollama3Qwen2Processor
-
 import time
-import ffmpeg
 import os
-import torch
 
-from utils.file_management import makedir, full_path
+from utils.file_management import full_path
 from utils.vlm_wrapper import VLM, get_conv
 
 
@@ -22,6 +16,7 @@ DEVICE = "cuda:0"
 MAX_FRAMES: int = 60
 FPS = 60
 
+DEMO_VID_PATH = full_path('~/Videos/1.mp4')
 
 def main():
 
@@ -39,7 +34,6 @@ def main():
         day = f"{_ts.tm_mday:02d}"
         hour = f"{_ts.tm_hour:02d}"
         minute = f"{_ts.tm_min:02d}"
-
 
         conversation = get_conv(video_path, FPS, MAX_FRAMES, prompt)
         model_output = vlm_model.forward(conversation)
