@@ -26,6 +26,7 @@ class VLM:
             MODEL_PATH,
             trust_remote_code=True
         )
+        logger.info("Instantiated models.")
 
     def forward(self, conversation):
 

@@ -22,30 +22,10 @@ DEVICE = "cuda:0"
 MAX_FRAMES: int = 60
 FPS = 60
 
-SAVE_TO_FOLDER = './demo'
-
 
 def main():
 
-    if not os.path.exists(f"{SAVE_TO_FOLDER}"):
-        os.mkdir(f"{SAVE_TO_FOLDER}")
-        logger.debug(f'Created folder [{SAVE_TO_FOLDER}].')
-
     vlm_model = VLM()
-    # model: Videollama3Qwen2ForCausalLM = AutoModelForCausalLM.from_pretrained(
-    #     MODEL_PATH,
-    #     trust_remote_code=True,
-    #     device_map={"": DEVICE},
-    #     torch_dtype=torch.bfloat16,
-    #     attn_implementation="flash_attention_2"
-    # )
-
-    # processor: Videollama3Qwen2Processor = AutoProcessor.from_pretrained(
-    #     MODEL_PATH,
-    #     trust_remote_code=True
-    # )
-
-    logger.info("Instantiated models.")
 
     def step(prompt: str, video_path: str):
         video_path = full_path(video_path)
@@ -60,8 +40,6 @@ def main():
         hour = f"{_ts.tm_hour:02d}"
         minute = f"{_ts.tm_min:02d}"
 
-        day_folder = f"{month}_{day}"
-        makedir(f"{SAVE_TO_FOLDER}/{day_folder}")
 
         conversation = get_conv(video_path, FPS, MAX_FRAMES, prompt)
         model_output = vlm_model.forward(conversation)
@@ -72,8 +50,7 @@ def main():
 
         # region  output handling
 
-        report_folder_path = f"{SAVE_TO_FOLDER}/{day_folder}/.../"
-        makedir(report_folder_path)
+        ...
 
         # endregion
 
