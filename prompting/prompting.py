@@ -5,16 +5,15 @@ from loguru import logger
 
 
 class Prompt:
-    _prompt = "Describe the scene."
-    _lock = Lock()
+    def __init__(self):
+        self._prompt = "Write a funny sentence!"
+        self._lock = Lock()
 
-    @classmethod
-    def get(cls):
-        with cls._lock:
-            return cls._prompt
+    def get(self):
+        with self._lock:
+            return self._prompt
 
-    @classmethod
-    def set(cls, new_prompt: str):
+    def set(self, new_prompt: str):
         logger.info(f"New prompt: [ {new_prompt} ]")
-        with cls._lock:
-            cls._prompt = new_prompt
+        with self._lock:
+            self._prompt = new_prompt
