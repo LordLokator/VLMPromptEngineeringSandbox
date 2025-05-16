@@ -157,8 +157,9 @@
         }
 
         async function loadPresetButtons() {
-            const resp = await fetch("/presets/button_presets.json");
+            const resp = await fetch("/preset_buttons");
             const presets = await resp.json();
+            const presetBar = document.getElementById("presetBar");
 
             presets.forEach(preset => {
                 const btn = document.createElement("button");
@@ -181,7 +182,7 @@
 
         msgInput.addEventListener("input", updateSaveButtonState);
 
-        saveBtn.onclick = () => {
+        saveBtn.onclick = async () => {
             const text = msgInput.value.trim();
             if (!text) return;
 
@@ -192,17 +193,31 @@
             msgInput.value = "";
             updateSaveButtonState();
 
-            const btn = document.createElement("button");
-            btn.className = `btn btn-sm rounded-pill text-white ${getRandomColorClass()}`;
-            btn.textContent = cleanLabel;
-            btn.title = text;
-            btn.onclick = () => {
-                msgInput.value = text;
-                msgInput.focus();
-                updateSaveButtonState();
-            };
-            presetBar.appendChild(btn);
+            const payload = { label: cleanLabel, text: text };
+
+            const res = await fetch("/save_preset", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify(payload)
+            });
+
+            const result = await res.json();
+            if (result.status === "ok") {
+                const btn = document.createElement("button");
+                btn.className = `btn btn-sm rounded-pill text-white ${getRandomColorClass()}`;
+                btn.textContent = cleanLabel;
+                btn.title = text;
+                btn.onclick = () => {
+                    msgInput.value = text;
+                    msgInput.focus();
+                    updateSaveButtonState();
+                };
+                presetBar.appendChild(btn);
+            } else {
+                alert("Failed to save preset.");
+            }
         };
+
 
         window.onload = () => {
             loadPresetButtons();
