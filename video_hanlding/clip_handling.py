@@ -1,5 +1,6 @@
 # clip_handling.py
 
+import glob
 import os
 import threading
 import time
@@ -7,7 +8,7 @@ from collections import deque
 from typing import Callable
 from loguru import logger
 
-from utils.file_management import full_path
+from utils.file_management import delete_files, full_path
 from video_hanlding.write_video import write_video
 from streaming import get_stream_source
 
@@ -24,6 +25,12 @@ class ClipRecorder:
         # Create './tmp' if it doesn't exists:
         if not os.path.exists(self.out_dir):
             os.makedirs(self.out_dir)
+        else:
+            # If folder not empty, clear.
+            # Should be smthing like __exit__ but
+            # unsure if app runs without erros.
+            files = glob.glob(os.path.join(self.out_dir, "*.mp4"))
+            delete_files(files)
 
     def _run(self, every_seconds: int):
         logger.info("ClipRecorder started.")
@@ -37,7 +44,7 @@ class ClipRecorder:
                 current_stream = get_stream_source()
                 continue
 
-            self.buffer.append(frame)
+            self.buffer.append(frame.copy())
 
             # Detect and respond to stream type change
             current_stream = get_stream_source()
@@ -67,7 +74,10 @@ class ClipRecorder:
         self.counter += 1
         logger.debug(f"Saving {len(frames)} buffered frames to [{filename}].")
         write_video(frames, filename, fps=self.fps)
-        self.flush_callback(full_path(filename))
+
+        if os.path.exists(filename):
+            self.flush_callback(full_path(filename))
 
     def stop(self):
         self.running = False
+        delete_files(glob.glob(os.path.join(self.out_dir, "*.mp4")))
