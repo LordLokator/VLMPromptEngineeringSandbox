@@ -40,7 +40,7 @@ class VLM:
             max_frames=max_frames,
             prompt=self.prompt
         )
-        self._forward(conversation)
+        return self._forward(conversation)
 
     def _forward(self, conversation):
 
