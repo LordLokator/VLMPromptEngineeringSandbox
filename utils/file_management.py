@@ -1,6 +1,8 @@
 from types import NoneType
 import os
 
+from loguru import logger
+
 
 def full_path(path: str) -> str:
     """Returns a sanitized, absolute path from absolute, relative or ~/ like paths.
@@ -22,3 +24,12 @@ def makedir(path: str) -> NoneType:
     path = full_path(path)
     if not os.path.exists(path):
         os.mkdir(path)
+
+
+def delete_files(files: list[str]):
+    for file in files:
+        try:
+            os.remove(file)
+            logger.debug(f"Deleted {file}.")
+        except Exception as e:
+            logger.error(f"Error deleting {file}: {e}")
