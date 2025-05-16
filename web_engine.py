@@ -84,9 +84,13 @@ def metadata():
 
 @app.get("/preset_buttons")
 def get_presets():
-    arr = load_presets() + load_user_presets()
-    print([item['label'] for item in arr])
-    return arr
+    sys_presets = load_presets()
+    user_presets = load_user_presets()
+    logger.info(f"{len(sys_presets)} system presets and {len(user_presets)} user presets were loaded.")
+    logger.debug(f"System presets: [ {sys_presets} ].")
+    logger.debug(f"User presets: [ {user_presets} ].")
+
+    return sys_presets + user_presets
 
 
 @app.post("/save_preset")
