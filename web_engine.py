@@ -122,8 +122,7 @@ if __name__ == "__main__":
     logger.add(sys.stderr, level="DEBUG")
     logger.info("Starting server on http://localhost:8000")
 
-    t = threading.Thread(
-        target=start_server,
-        daemon=False
-    )
-    t.start()
+    try:
+        start_server_threaded()
+    except KeyboardInterrupt:
+        logger.info("KeyboardInterrupt detected.")
