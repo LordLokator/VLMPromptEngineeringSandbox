@@ -27,7 +27,9 @@ function sendMessage() {
 
 
 function toggleStream() {
-    ws.send("toggle_stream");
+    const payload = { role: "user", text: "toggle_stream" };
+    ws.send(JSON.stringify(payload));
+
     addChatMessage("System", "Stream toggle requested");
 
     const img = document.getElementById("video");
