@@ -17,7 +17,7 @@ DEVICE = "cuda:0"
 class VLM:
     def __init__(self, prompt: Prompt):
         self.sys_prompt = "You are a helpful assistant."
-        self.prompt = prompt
+        self.prompt_obj = prompt
 
         self.model: Videollama3Qwen2ForCausalLM = AutoModelForCausalLM.from_pretrained(
             MODEL_PATH,
@@ -34,11 +34,13 @@ class VLM:
         logger.info("Instantiated models.")
 
     def forward(self, video_path, fps, max_frames):
+        current_prompt = self.prompt_obj.get()
+
         conversation = self.get_conv(
             video_path=video_path,
             fps=fps,
             max_frames=max_frames,
-            prompt=self.prompt
+            prompt=current_prompt
         )
         return self._forward(conversation)
 
@@ -46,7 +48,6 @@ class VLM:
 
         try:
 
-            # VLM processor inputs. Move to VLM
             processed_inputs = self.processor(
                 conversation=conversation,
                 add_system_prompt=True,
