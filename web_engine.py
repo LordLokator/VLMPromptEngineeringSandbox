@@ -1,6 +1,7 @@
 import datetime
 import sys
-import time
+from fastapi import Request
+from utils.button_presets import load_presets, load_user_presets, save_user_preset
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect
 from fastapi.responses import HTMLResponse, StreamingResponse, FileResponse
 from fastapi.staticfiles import StaticFiles
@@ -8,7 +9,6 @@ from loguru import logger
 import uvicorn
 
 from streaming import video_stream_generator, USE_LIVE_CAMERA
-from utils.button_presets import load_presets
 
 app = FastAPI()
 
@@ -41,9 +41,7 @@ async def websocket_endpoint(ws: WebSocket):
 
                 await ws.send_text(f"Switched to: {state}")
             else:
-                logger.info(f"Received from client: {msg}")
-
-            await ws.send_text(f"Echo: {msg}")
+                logger.info(f"Client said: {msg}")
 
     except WebSocketDisconnect:
         logger.info("Client disconnected")
@@ -76,8 +74,23 @@ def metadata():
 
 @app.get("/preset_buttons")
 def get_presets():
-    return load_presets()
+    arr = load_presets() + load_user_presets()
+    print([item['label'] for item in arr])
+    return arr
 
+
+@app.post("/save_preset")
+async def post_preset(request: Request):
+    data = await request.json()
+
+    label = data.get("label", "").strip()[:25]
+    text = data.get("text", "").strip()
+
+    if label and text:
+        save_user_preset(label, text)
+        return {"status": "ok", "label": label}
+
+    return {"status": "error", "reason": "Invalid input"}
 
 if __name__ == "__main__":
     import sys
