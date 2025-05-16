@@ -6,7 +6,7 @@ from utils.file_management import full_path
 
 FALLBACK_IMAGE = "src/error.jpeg"
 VIDEO_PATH = full_path("./static_video/street_view.mp4")
-USE_LIVE_CAMERA = {'value': True}
+USE_LIVE_CAMERA = {'value': False}
 
 
 def static_video():
