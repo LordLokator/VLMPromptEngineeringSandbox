@@ -3,7 +3,7 @@ import time
 import os
 
 from utils.file_management import full_path
-from utils.vlm_wrapper import VLM, get_conv
+from utils.vlm_wrapper import VLM
 
 
 from loguru import logger
@@ -21,7 +21,7 @@ DEMO_VID_PATH = full_path('./static_video/street_view.mp4')
 
 def main():
 
-    vlm_model = VLM()
+    vlm_wrapper = VLM()
 
     def step(prompt: str, video_path: str):
         video_path = full_path(video_path)
@@ -36,8 +36,8 @@ def main():
         hour = f"{_ts.tm_hour:02d}"
         minute = f"{_ts.tm_min:02d}"
 
-        conversation = get_conv(video_path, FPS, MAX_FRAMES, prompt)
-        model_output = vlm_model.forward(conversation)
+        conversation = vlm_wrapper.get_conv(video_path, FPS, MAX_FRAMES, prompt)
+        model_output = vlm_wrapper.forward(conversation)
         raw_output: str = model_output[0].strip()
 
         report = f"At {hour}:{minute}, {MODEL_NAME} says: {raw_output}"
