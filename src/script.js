@@ -11,8 +11,21 @@ const pastelColors = ["#FF6633", "#FFB399", "#FF33FF", "#FFFF99", "#00B3E6", "#E
 ];
 
 ws.onmessage = (event) => {
-    const { role, text } = JSON.parse(event.data);
-    addChatMessage(role, text);
+    try {
+        const data = JSON.parse(event.data);
+
+        if (data.output) {
+            const text = `${data.output} (Processed in ${data.delay.toFixed(2)}s)`;
+            addChatMessage("vlm", text);
+        } else if (data.role && data.text) {
+            addChatMessage(data.role, data.text);
+        } else {
+            console.warn("Unhandled message format:", data);
+        }
+
+    } catch (err) {
+        console.error("Failed to parse message:", err, event.data);
+    }
 };
 
 
