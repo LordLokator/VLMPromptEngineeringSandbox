@@ -23,8 +23,11 @@ def main():
     vlm = VLM()
 
     # Integration logic
-    while True:
-        ...
+    try:
+        while True:
+            ...
+    except KeyboardInterrupt:
+        logger.info("Exited with KeyboardInterrupt.")
 
 if __name__ == "__main__":
     main()
