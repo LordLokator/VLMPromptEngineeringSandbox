@@ -72,8 +72,12 @@
                 <div>
                     <img id="video" src="/video_feed" />
                 </div>
+                <!-- Preset Button Panel -->
+                <div id="presetBar" class="d-flex flex-wrap gap-2 mb-2">
+                    <!-- Buttons will be added here dynamically -->
+                </div>
                 <div id="inputPanel" class="align-items-center">
-                    <input id="msgInput" type="text" class="form-control" placeholder="Type a message..." />
+                    <input id="msgInput" type="text" class="form-control" placeholder="New prompt..." />
                     <button class="btn btn-primary" onclick="sendMessage()">Send</button>
                     <button id="toggleStream" class="btn btn-outline-secondary" onclick="toggleStream()">Toggle
                         Stream</button>
@@ -128,6 +132,26 @@
                 chat.removeChild(chat.firstChild);
             }
         }
+        async function loadPresetButtons() {
+            const resp = await fetch("/src/button_presets.json");
+            const presets = await resp.json();
+            const presetBar = document.getElementById("presetBar");
+
+            presets.forEach(preset => {
+                const btn = document.createElement("button");
+                btn.className = "btn btn-outline-info btn-sm rounded-pill";
+                btn.textContent = preset.label;
+                btn.title = preset.text;
+                btn.onclick = () => {
+                    msgInput.value = preset.text;
+                    msgInput.focus();
+                };
+                presetBar.appendChild(btn);
+            });
+        }
+
+        window.onload = loadPresetButtons;
+
     </script>
 </body>
 
