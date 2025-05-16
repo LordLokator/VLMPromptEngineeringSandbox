@@ -4,10 +4,10 @@ import os
 import threading
 import time
 from collections import deque
-from typing import Iterator
-import numpy as np
+from typing import Callable
 from loguru import logger
 
+from utils.file_management import full_path
 from video_hanlding.write_video import write_video
 from streaming import get_stream_source
 
@@ -34,28 +34,29 @@ class ClipRecorder:
             try:
                 frame = next(current_stream)
             except StopIteration:
-                current_stream = get_stream_source()  # 🔄 re-fetch stream
+                current_stream = get_stream_source()
                 continue
 
             self.buffer.append(frame)
 
             # Detect and respond to stream type change
-            new_stream = get_stream_source()
-            if new_stream is not current_stream:
-                logger.info("Stream source changed. Switching.")
-                current_stream = new_stream
-                continue
+            current_stream = get_stream_source()
 
             if time.time() - last_flush >= every_seconds:
                 last_flush = time.time()
                 if len(self.buffer) >= self.fps:
                     self._flush_clip()
 
-    def start(self, frame_stream: Iterator[np.ndarray], every_seconds: int = 10):
+    def start(
+            self,
+            every_seconds: int = 10,
+            flush_callback: Callable = lambda _: None
+    ):
+        self.flush_callback = flush_callback
         self.running = True
         threading.Thread(
             target=self._run,
-            args=(frame_stream, every_seconds),
+            args=(every_seconds,),
             daemon=True
         ).start()
 
@@ -66,6 +67,7 @@ class ClipRecorder:
         self.counter += 1
         logger.debug(f"Saving {len(frames)} buffered frames to [{filename}].")
         write_video(frames, filename, fps=self.fps)
+        self.flush_callback(full_path(filename))
 
     def stop(self):
         self.running = False
