@@ -8,7 +8,7 @@ from loguru import logger
 import uvicorn
 
 from streaming import video_stream_generator, USE_LIVE_CAMERA
-
+from utils.button_presets import load_presets
 
 app = FastAPI()
 
@@ -71,6 +71,11 @@ def metadata():
         "throughput": "12 fps",
         "session_id": "abc123"
     }
+
+
+@app.get("/preset_buttons")
+def get_presets():
+    return load_presets()
 
 
 if __name__ == "__main__":

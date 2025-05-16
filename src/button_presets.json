@@ -1,0 +1,8 @@
+[
+  { "label": "red car", "text": "Is there a red car in the video?" },
+  { "label": "people", "text": "Are there people visible?" },
+  { "label": "night", "text": "Is it night or day?" },
+  { "label": "animals", "text": "Are there any animals?" },
+  { "label": "license plate", "text": "Can you read the license plate?" },
+  { "label": "weather", "text": "What is the weather like?" }
+]
