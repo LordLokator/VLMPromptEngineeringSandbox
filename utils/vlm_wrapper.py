@@ -14,6 +14,8 @@ DEVICE = "cuda:0"
 
 class VLM:
     def __init__(self):
+        self.sys_prompt = "You are a helpful assistant."
+
         self.model: Videollama3Qwen2ForCausalLM = AutoModelForCausalLM.from_pretrained(
             MODEL_PATH,
             trust_remote_code=True,
@@ -64,30 +66,27 @@ class VLM:
 
         return raw_output
 
-
-sys_prompt = "You are a helpful assistant."
-
-
-def get_conv(video_path, fps, max_frames, prompt): return [
-    {
-        "role": "system",
-        "content": sys_prompt
-    },
-    {
-        "role": "user",
-        "content": [
-                {
-                    "type": "video",
-                    "video": {
-                        "video_path": video_path,
-                        "fps": fps,
-                        "max_frames": max_frames
-                    }
-                },
+    def get_conv(self, video_path, fps, max_frames, prompt):
+        return [
             {
-                    "type": "text",
-                    "text": prompt
-            }
+                "role": "system",
+                "content": self.sys_prompt
+            },
+            {
+                "role": "user",
+                "content": [
+                    {
+                        "type": "video",
+                        "video": {
+                            "video_path": video_path,
+                            "fps": fps,
+                            "max_frames": max_frames
+                        }
+                    },
+                    {
+                        "type": "text",
+                        "text": prompt
+                    }
+                ]
+            },
         ]
-    },
-]
