@@ -128,6 +128,10 @@ saveBtn.onclick = async () => {
     }
 };
 
+document.getElementById('video').addEventListener('contextmenu', function (e) {
+    e.preventDefault();
+});
+
 
 window.onload = () => {
     loadPresetButtons();
