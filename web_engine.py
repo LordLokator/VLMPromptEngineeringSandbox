@@ -35,6 +35,8 @@ async def websocket_endpoint(ws: WebSocket):
         while True:
             raw = await ws.receive_text()
             msg = json.loads(raw)
+            logger.debug(f"Recieved msg: [ {msg} ]")
+
             role = msg.get("role")
             text = msg.get("text", "")
 
