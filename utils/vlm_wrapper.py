@@ -5,6 +5,8 @@ from VideoLLaMA3.inference.transformers_api.processing_videollama3 import Videol
 import torch
 from loguru import logger
 
+from prompting.prompting import Prompt
+
 MAX_NEW_TOKENS = 1024
 TEMP = 0.01
 SAVE_TO_FOLDER = './demo'
@@ -13,8 +15,9 @@ DEVICE = "cuda:0"
 
 
 class VLM:
-    def __init__(self):
+    def __init__(self, prompt: Prompt):
         self.sys_prompt = "You are a helpful assistant."
+        self.prompt = prompt
 
         self.model: Videollama3Qwen2ForCausalLM = AutoModelForCausalLM.from_pretrained(
             MODEL_PATH,
@@ -30,7 +33,16 @@ class VLM:
         )
         logger.info("Instantiated models.")
 
-    def forward(self, conversation):
+    def forward(self, video_path, fps, max_frames):
+        conversation = self.get_conv(
+            video_path=video_path,
+            fps=fps,
+            max_frames=max_frames,
+            prompt=self.prompt
+        )
+        self._forward(conversation)
+
+    def _forward(self, conversation):
 
         try:
 
