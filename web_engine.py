@@ -7,6 +7,7 @@ from fastapi import FastAPI, WebSocket, WebSocketDisconnect
 from fastapi.responses import HTMLResponse, StreamingResponse, FileResponse
 from fastapi.staticfiles import StaticFiles
 from loguru import logger
+import threading
 import uvicorn
 
 from streaming import video_stream_generator, USE_LIVE_CAMERA
@@ -108,6 +109,11 @@ async def post_preset(request: Request):
 
     return {"status": "error", "reason": "Invalid input"}
 
+
+def start_server():
+    uvicorn.run("web_engine:app", host="0.0.0.0", port=8000, reload=False)
+
+
 if __name__ == "__main__":
     import sys
     from loguru import logger
@@ -116,4 +122,8 @@ if __name__ == "__main__":
     logger.add(sys.stderr, level="DEBUG")
     logger.info("Starting server on http://localhost:8000")
 
-    uvicorn.run(app, host="0.0.0.0", port=8000)
+    t = threading.Thread(
+        target=start_server,
+        daemon=False
+    )
+    t.start()
