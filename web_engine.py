@@ -13,10 +13,6 @@ import threading
 import uvicorn
 
 from streaming import video_stream_generator, USE_LIVE_CAMERA
-from prompting.prompting import Prompt
-
-# Dirty but meh
-PROMPT: NoneType | Prompt = None
 
 active_connections: list[WebSocket] = []
 
@@ -39,7 +35,7 @@ async def favicon():
 
 @app.websocket("/ws")
 async def websocket_endpoint(ws: WebSocket):
-    global PROMPT
+    prompt = ws.app.state.prompt
 
     await ws.accept()
     active_connections.append(ws)
@@ -61,8 +57,8 @@ async def websocket_endpoint(ws: WebSocket):
                     system_msg = {"role": "system", "text": f"Switched to: {new_mode}"}
                     await ws.send_text(json.dumps(system_msg))
                 else:
-                    if PROMPT:
-                        PROMPT.set(text)
+                    prompt.set(text)
+
                     echo_msg = {"role": "system", "text": f"Prompt changed to: {text}"}
                     await ws.send_text(json.dumps(echo_msg))
 
@@ -129,24 +125,39 @@ def start_server():
     uvicorn.run("web_engine:app", host="0.0.0.0", port=8000, reload=False)
 
 
-def broadcast(message: str):
+def broadcast_sync(msg: dict):
+    try:
+        asyncio.run(broadcast(msg))
+    except RuntimeError:
+        # Already inside an event loop (common in FastAPI)
+        asyncio.create_task(broadcast(msg))
+
+
+async def broadcast(message: str):
     to_remove = []
+
+    msg = json.dumps(message)
 
     for ws in active_connections:
         try:
-            asyncio.create_task(ws.send_text(message))
+            asyncio.create_task(ws.send_text(msg))
         except Exception as e:
             logger.error(f"Failed to send: {e}")
             to_remove.append(ws)
 
     for ws in to_remove:
-        active_connections.remove(ws)
+        try:
+            if ws in active_connections:
+                active_connections.remove(ws)
+
+        except ValueError:
+            logger.warning("Tried to remove non-existent WebSocket.")
 
 
 def start_server_threaded(prompt=None):
     global PROMPT
 
-    PROMPT = prompt
+    app.state.prompt = prompt
 
     t = threading.Thread(
         target=start_server,
