@@ -1,5 +1,6 @@
 # clip_handling.py
 
+import os
 import threading
 import time
 from collections import deque
@@ -19,6 +20,10 @@ class ClipRecorder:
         self.out_dir = "./tmp"
         self.running = False
         self.counter = 0
+
+        # Create './tmp' if it doesn't exists:
+        if not os.path.exists(self.out_dir):
+            os.makedirs(self.out_dir)
 
     def _run(self, every_seconds: int):
         logger.info("ClipRecorder started.")
