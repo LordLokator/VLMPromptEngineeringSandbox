@@ -1,5 +1,6 @@
 import datetime
 import sys
+import json
 from fastapi import Request
 from utils.button_presets import load_presets, load_user_presets, save_user_preset
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect
@@ -32,16 +33,25 @@ async def websocket_endpoint(ws: WebSocket):
     await ws.accept()
     try:
         while True:
-            msg = await ws.receive_text()
-            if msg == "toggle_stream":
-                USE_LIVE_CAMERA["value"] = not USE_LIVE_CAMERA["value"]
+            raw = await ws.receive_text()
+            msg = json.loads(raw)
+            role = msg.get("role")
+            text = msg.get("text", "")
 
-                state = "Live camera" if USE_LIVE_CAMERA["value"] else "Static video"
-                logger.info(f"Toggled stream source → {state}")
+            # Handle user commands
+            if role == "user":
+                if text == "toggle_stream":
+                    USE_LIVE_CAMERA["value"] = not USE_LIVE_CAMERA["value"]
+                    new_mode = "Live camera" if USE_LIVE_CAMERA["value"] else "Static video"
+                    system_msg = {"role": "system", "text": f"Switched to: {new_mode}"}
+                    await ws.send_text(json.dumps(system_msg))
+                else:
+                    echo_msg = {"role": "vlm", "text": f"[VLM simulated] You asked: {text}"}
+                    await ws.send_text(json.dumps(echo_msg))
 
-                await ws.send_text(f"Switched to: {state}")
             else:
-                logger.info(f"Client said: {msg}")
+                logger.warning(f"Unhandled role: {role}")
+                await ws.send_text(json.dumps({"role": "system", "text": f"Unknown role: {role}"}))
 
     except WebSocketDisconnect:
         logger.info("Client disconnected")
