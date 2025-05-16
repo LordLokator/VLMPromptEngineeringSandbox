@@ -1,6 +1,7 @@
 import datetime
 import sys
 import json
+from types import NoneType
 from fastapi import Request
 from utils.button_presets import load_presets, load_user_presets, save_user_preset
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect
@@ -11,6 +12,10 @@ import threading
 import uvicorn
 
 from streaming import video_stream_generator, USE_LIVE_CAMERA
+from prompting.prompting import Prompt
+
+# Dirty but meh
+PROMPT: NoneType | Prompt = None
 
 app = FastAPI()
 
@@ -31,6 +36,8 @@ async def favicon():
 
 @app.websocket("/ws")
 async def websocket_endpoint(ws: WebSocket):
+    global PROMPT
+
     await ws.accept()
     try:
         while True:
@@ -49,7 +56,9 @@ async def websocket_endpoint(ws: WebSocket):
                     system_msg = {"role": "system", "text": f"Switched to: {new_mode}"}
                     await ws.send_text(json.dumps(system_msg))
                 else:
-                    echo_msg = {"role": "vlm", "text": f"[VLM simulated] You asked: {text}"}
+                    if PROMPT:
+                        PROMPT.set(text)
+                    echo_msg = {"role": "system", "text": f"Prompt changed to: {text}"}
                     await ws.send_text(json.dumps(echo_msg))
 
             else:
@@ -112,6 +121,18 @@ async def post_preset(request: Request):
 
 def start_server():
     uvicorn.run("web_engine:app", host="0.0.0.0", port=8000, reload=False)
+
+
+def start_server_threaded(prompt=None):
+    global PROMPT
+
+    PROMPT = prompt
+
+    t = threading.Thread(
+        target=start_server,
+        daemon=False
+    )
+    t.start()
 
 
 if __name__ == "__main__":
