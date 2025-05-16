@@ -61,6 +61,21 @@
             display: flex;
             flex-direction: column;
         }
+
+        /* Blue */
+        .chat-message.user {
+            color: #0d6efd;
+        }
+
+        /* Black */
+        .chat-message.system {
+            color: #212529;
+        }
+
+        /* Green */
+        .chat-message.vlm {
+            color: #198754;
+        }
     </style>
 </head>
 
@@ -111,17 +126,20 @@
         ];
 
         ws.onmessage = (event) => {
-            addChatMessage("Server", event.data);
+            const { role, text } = JSON.parse(event.data);
+            addChatMessage(role, text);
         };
+
 
         function sendMessage() {
             const text = msgInput.value.trim();
             if (!text) return;
-            ws.send(text);
-            addChatMessage("You", text);
+            const payload = { role: "user", text };
+            ws.send(JSON.stringify(payload));
+            addChatMessage("user", text);
             msgInput.value = "";
-            updateSaveButtonState();
         }
+
 
         function toggleStream() {
             ws.send("toggle_stream");
@@ -131,16 +149,20 @@
             img.src = `/video_feed?ts=${Date.now()}`;
         }
 
-        function addChatMessage(sender, msg) {
+        function addChatMessage(role, msg) {
             const line = document.createElement("div");
-            line.className = "chat-message text-muted";
-            line.innerHTML = `<strong>${sender}:</strong> ${msg}`;
+            line.className = `chat-message ${role}`;
+            line.innerHTML = `<strong>${capitalize(role)}:</strong> ${msg}`;
             chat.appendChild(line);
-            chat.scrollTop = chat.scrollHeight;
 
+            chat.scrollTop = chat.scrollHeight;
             if (chat.children.length > MAX_MESSAGES) {
                 chat.removeChild(chat.firstChild);
             }
+        }
+
+        function capitalize(word) {
+            return word.charAt(0).toUpperCase() + word.slice(1);
         }
 
         function getRandomColor() {
