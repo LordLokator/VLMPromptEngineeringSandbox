@@ -76,7 +76,14 @@
                 <div id="presetBar" class="d-flex flex-wrap gap-2 mb-2">
                     <!-- Buttons will be added here dynamically -->
                 </div>
+
                 <div id="inputPanel" class="align-items-center">
+                    <!-- Preset Buttons and Save -->
+                    <div id="presetBar" class="d-flex flex-wrap gap-2 mb-2"></div>
+                    <div class="mb-2">
+                        <button id="savePresetBtn" class="btn btn-outline-success btn-sm" disabled>💾 Save as
+                            Preset</button>
+                    </div>
                     <input id="msgInput" type="text" class="form-control" placeholder="New prompt..." />
                     <button class="btn btn-primary" onclick="sendMessage()">Send</button>
                     <button id="toggleStream" class="btn btn-outline-secondary" onclick="toggleStream()">Toggle
@@ -97,6 +104,12 @@
         const msgInput = document.getElementById("msgInput");
         const MAX_MESSAGES = 100;
 
+        const presetBar = document.getElementById("presetBar");
+        const saveBtn = document.getElementById("savePresetBtn");
+
+        const pastelColors = ["#FF6633", "#FFB399", "#FF33FF", "#FFFF99", "#00B3E6", "#E6B333", "#3366E6", "#999966", "#809980", "#E6FF80", "#1AFF33", "#999933", "#FF3380", "#CCCC00", "#66E64D", "#4D80CC", "#FF4D4D", "#99E6E6", "#6666FF"
+        ];
+
         ws.onmessage = (event) => {
             addChatMessage("Server", event.data);
         };
@@ -107,15 +120,15 @@
             ws.send(text);
             addChatMessage("You", text);
             msgInput.value = "";
+            updateSaveButtonState();
         }
 
         function toggleStream() {
             ws.send("toggle_stream");
             addChatMessage("System", "Stream toggle requested");
-            // Force video reload
+
             const img = document.getElementById("video");
-            const now = Date.now();
-            img.src = `/video_feed?ts=${now}`; // cache buster
+            img.src = `/video_feed?ts=${Date.now()}`;
         }
 
         function addChatMessage(sender, msg) {
@@ -123,36 +136,80 @@
             line.className = "chat-message text-muted";
             line.innerHTML = `<strong>${sender}:</strong> ${msg}`;
             chat.appendChild(line);
-
-            // Scroll to bottom
             chat.scrollTop = chat.scrollHeight;
 
-            // Trim old messages
             if (chat.children.length > MAX_MESSAGES) {
                 chat.removeChild(chat.firstChild);
             }
         }
+
+        function getRandomColor() {
+            const hexColors = [
+                "#f05d5eff",
+                "#0f7173ff",
+                "#272932ff",
+                "#d8a47fff",
+                "#60495A",
+                "#3F7D20",
+            ];
+
+            return hexColors[Math.floor(Math.random() * hexColors.length)];
+        }
+
         async function loadPresetButtons() {
             const resp = await fetch("/src/button_presets.json");
             const presets = await resp.json();
-            const presetBar = document.getElementById("presetBar");
 
             presets.forEach(preset => {
                 const btn = document.createElement("button");
-                btn.className = "btn btn-outline-info btn-sm rounded-pill";
+                btn.className = `btn btn-sm rounded-pill text-white`;
+                btn.style.backgroundColor = getRandomColor();
                 btn.textContent = preset.label;
                 btn.title = preset.text;
                 btn.onclick = () => {
                     msgInput.value = preset.text;
                     msgInput.focus();
+                    updateSaveButtonState();
                 };
                 presetBar.appendChild(btn);
             });
         }
 
-        window.onload = loadPresetButtons;
+        function updateSaveButtonState() {
+            saveBtn.disabled = msgInput.value.trim().length === 0;
+        }
 
+        msgInput.addEventListener("input", updateSaveButtonState);
+
+        saveBtn.onclick = () => {
+            const text = msgInput.value.trim();
+            if (!text) return;
+
+            const label = prompt("Enter a name for this preset (max 25 characters):");
+            if (!label || label.trim().length === 0) return;
+
+            const cleanLabel = label.trim().slice(0, 25);
+            msgInput.value = "";
+            updateSaveButtonState();
+
+            const btn = document.createElement("button");
+            btn.className = `btn btn-sm rounded-pill text-white ${getRandomColorClass()}`;
+            btn.textContent = cleanLabel;
+            btn.title = text;
+            btn.onclick = () => {
+                msgInput.value = text;
+                msgInput.focus();
+                updateSaveButtonState();
+            };
+            presetBar.appendChild(btn);
+        };
+
+        window.onload = () => {
+            loadPresetButtons();
+            updateSaveButtonState();
+        };
     </script>
+
 </body>
 
 </html>
