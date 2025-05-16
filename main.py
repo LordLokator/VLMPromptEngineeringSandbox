@@ -2,7 +2,9 @@
 import sys
 import threading
 import time
+import timeit
 from loguru import logger
+from prompting.prompting import Prompt
 from vlm_serve import VLM
 from web_engine import start_server_threaded
 
@@ -16,12 +18,16 @@ logger.add(sys.stderr, level="DEBUG")
 def main():
     logger.info("Main app initialization...")
 
+    # Create shared Prompt object
+    prompt = Prompt()
+
     # Start server in separate thread
     start_server_threaded(prompt)
 
     # Instantiate VLM
-    # vlm = VLM()
-    stream = get_stream_source()
+    vlm = VLM(prompt)
+
+    # Create Video stream
     recorder = ClipRecorder(buffer_seconds=2, fps=10)
     recorder.start(stream, every_seconds=10)
 
