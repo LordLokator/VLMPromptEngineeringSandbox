@@ -157,7 +157,7 @@
         }
 
         async function loadPresetButtons() {
-            const resp = await fetch("/src/button_presets.json");
+            const resp = await fetch("/presets/button_presets.json");
             const presets = await resp.json();
 
             presets.forEach(preset => {

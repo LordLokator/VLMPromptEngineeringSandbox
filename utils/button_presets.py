@@ -3,7 +3,7 @@ import json
 from pathlib import Path
 from loguru import logger
 
-PRESETS_FILE = Path("src/button_presets.json")
+PRESETS_FILE = Path("presets/button_presets.json")
 
 
 def load_presets():

@@ -14,6 +14,7 @@ app = FastAPI()
 
 # Serve static frontend
 app.mount("/src", StaticFiles(directory="src"), name="src")
+app.mount("/presets", StaticFiles(directory="presets"), name="presets")
 
 
 @app.get("/")
