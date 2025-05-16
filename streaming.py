@@ -21,8 +21,10 @@ def static_video():
         if not ret:
             cap.set(cv2.CAP_PROP_POS_FRAMES, 0)
             continue
+        start = time.time()
         yield frame
-        time.sleep(delay)
+        elapsed = time.time() - start
+        time.sleep(max(0, delay - elapsed))
 
 
 def live_stream():
