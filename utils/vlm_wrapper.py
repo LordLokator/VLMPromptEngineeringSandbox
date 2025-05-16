@@ -8,7 +8,7 @@ from loguru import logger
 from prompting.prompting import Prompt
 
 MAX_NEW_TOKENS = 1024
-TEMP = 0.01
+# TEMP = 0.01
 SAVE_TO_FOLDER = './demo'
 MODEL_PATH = "DAMO-NLP-SG/VideoLLaMA3-7B"
 DEVICE = "cuda:0"
@@ -33,7 +33,7 @@ class VLM:
         )
         logger.info("Instantiated models.")
 
-    def forward(self, video_path, fps, max_frames):
+    def forward(self, video_path, fps, max_frames, temperature=0.01):
         current_prompt = self.prompt_obj.get()
 
         conversation = self.get_conv(
@@ -42,9 +42,10 @@ class VLM:
             max_frames=max_frames,
             prompt=current_prompt
         )
-        return self._forward(conversation)
+        output = self._forward(conversation, temperature)
+        return (output, temperature)
 
-    def _forward(self, conversation):
+    def _forward(self, conversation, temperature=0.01):
 
         try:
 
@@ -70,7 +71,7 @@ class VLM:
         output_ids = self.model.generate(
             **inputs,
             max_new_tokens=MAX_NEW_TOKENS,
-            temperature=TEMP,
+            temperature=temperature,
         )
         raw_output: str = self.processor.batch_decode(
             output_ids,

@@ -5,7 +5,7 @@ import timeit
 from loguru import logger
 from prompting.prompting import Prompt
 from utils.vlm_wrapper import VLM
-from web_engine import start_server_threaded, broadcast_sync
+from web_engine import start_server_threaded, broadcast_sync, TEMPERATURE
 
 from video_hanlding.clip_handling import ClipRecorder
 
@@ -39,7 +39,14 @@ def main():
 
         try:
             start = timeit.default_timer()
-            output = vlm.forward(video_path=clip_path, fps=FPS, max_frames=MAX_FRAMES)
+
+            output, temperature = vlm.forward(
+                video_path=clip_path,
+                fps=FPS,
+                max_frames=MAX_FRAMES,
+                temperature=TEMPERATURE
+            )
+
             delay = timeit.default_timer() - start
 
             _message = f"VLM Response (after {delay:.2f}s): {output}"

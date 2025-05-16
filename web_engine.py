@@ -14,6 +14,8 @@ import uvicorn
 
 from streaming import video_stream_generator, USE_LIVE_CAMERA
 
+TEMPERATURE: float = 0.01
+
 active_connections: list[WebSocket] = []
 
 app = FastAPI()
@@ -43,11 +45,12 @@ async def websocket_endpoint(ws: WebSocket):
     try:
         while True:
             raw = await ws.receive_text()
-            msg = json.loads(raw)
+            msg: dict[str, str] = json.loads(raw)
             logger.debug(f"Recieved msg: [ {msg} ]")
 
             role = msg.get("role")
             text = msg.get("text", "")
+            temperature = msg.get("temperature", None)
 
             # Handle user commands
             if role == "user":
@@ -56,10 +59,17 @@ async def websocket_endpoint(ws: WebSocket):
                     new_mode = "Live camera" if USE_LIVE_CAMERA["value"] else "Static video"
                     system_msg = {"role": "system", "text": f"Switched to: {new_mode}"}
                     await ws.send_text(json.dumps(system_msg))
-                else:
-                    prompt.set(text)
 
-                    echo_msg = {"role": "system", "text": f"Prompt changed to: {text}"}
+                else:
+                    # if PROMPT:
+                    #     PROMPT.set(text)
+                    if temperature is not None:
+                        global TEMPERATURE
+
+                        TEMPERATURE = float(temperature)
+                        logger.info(f"Temperature set to: {TEMPERATURE:.2f}")
+
+                    echo_msg = {"role": "system", "text": f"Prompt changed to: {text}, Temperature: {TEMPERATURE:.2f}"}
                     await ws.send_text(json.dumps(echo_msg))
 
             else:
