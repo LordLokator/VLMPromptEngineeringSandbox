@@ -67,4 +67,5 @@ body {
 /* Green */
 .chat-message.vlm {
     color: #198754;
+    font-style: italic;
 }
