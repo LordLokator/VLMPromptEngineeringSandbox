@@ -1,3 +1,4 @@
+import asyncio
 import datetime
 import sys
 import json
@@ -16,6 +17,8 @@ from prompting.prompting import Prompt
 
 # Dirty but meh
 PROMPT: NoneType | Prompt = None
+
+active_connections: list[WebSocket] = []
 
 app = FastAPI()
 
@@ -39,6 +42,8 @@ async def websocket_endpoint(ws: WebSocket):
     global PROMPT
 
     await ws.accept()
+    active_connections.append(ws)
+
     try:
         while True:
             raw = await ws.receive_text()
@@ -67,6 +72,7 @@ async def websocket_endpoint(ws: WebSocket):
 
     except WebSocketDisconnect:
         logger.info("Client disconnected")
+        active_connections.remove(ws)
 
 
 @app.get("/video_feed")
@@ -121,6 +127,20 @@ async def post_preset(request: Request):
 
 def start_server():
     uvicorn.run("web_engine:app", host="0.0.0.0", port=8000, reload=False)
+
+
+def broadcast(message: str):
+    to_remove = []
+
+    for ws in active_connections:
+        try:
+            asyncio.create_task(ws.send_text(message))
+        except Exception as e:
+            logger.error(f"Failed to send: {e}")
+            to_remove.append(ws)
+
+    for ws in to_remove:
+        active_connections.remove(ws)
 
 
 def start_server_threaded(prompt=None):
