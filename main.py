@@ -4,8 +4,8 @@ import time
 import timeit
 from loguru import logger
 from prompting.prompting import Prompt
-from vlm_serve import VLM
-from web_engine import start_server_threaded, broadcast
+from utils.vlm_wrapper import VLM
+from web_engine import start_server_threaded, broadcast_sync
 
 from video_hanlding.clip_handling import ClipRecorder
 
@@ -27,7 +27,7 @@ def main():
 
     # Create Video stream
     recorder = ClipRecorder(
-        buffer_seconds=2,
+        buffer_seconds=1,
         fps=FPS
     )
 
@@ -36,9 +36,9 @@ def main():
 
     def on_clip_flush(clip_path: str):
         logger.info(f"Clip flushed: {clip_path}")
-        start = timeit.default_timer()
 
         try:
+            start = timeit.default_timer()
             output = vlm.forward(video_path=clip_path, fps=FPS, max_frames=MAX_FRAMES)
             delay = timeit.default_timer() - start
 
@@ -51,7 +51,7 @@ def main():
                 'delay': delay,
                 'status': 'OK'
             }
-            broadcast(msg)
+            broadcast_sync(msg)
 
         except Exception as e:
             err = f"Failed to process: {e}"
@@ -60,9 +60,9 @@ def main():
                 'status': 'ERROR',
                 'msg': err
             }
-            broadcast(msg)
+            broadcast_sync(msg)
 
-    recorder.start(every_seconds=1, flush_callback=on_clip_flush)
+    recorder.start(flush_callback=on_clip_flush)
 
     try:
         while True:
