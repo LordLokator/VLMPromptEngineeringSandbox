@@ -15,44 +15,52 @@ from streaming import get_stream_source
 
 class ClipRecorder:
     def __init__(self, buffer_seconds: int = 3, fps: int = 10):
-        self.buffer_size = buffer_seconds * fps
-        self.buffer = deque(maxlen=self.buffer_size)
+        self.buffer_seconds = buffer_seconds
         self.fps = fps
         self.out_dir = "./tmp"
         self.running = False
         self.counter = 0
+        self.flush_callback: Callable = lambda _: None
 
         # Create './tmp' if it doesn't exists:
-        if not os.path.exists(self.out_dir):
-            os.makedirs(self.out_dir)
-        else:
-            # If folder not empty, clear.
-            # Should be smthing like __exit__ but
-            # unsure if app runs without erros.
-            files = glob.glob(os.path.join(self.out_dir, "*.mp4"))
-            delete_files(files)
+        os.makedirs(self.out_dir, exist_ok=True)
+
+        # If folder not empty, clear.
+        # Should be something like __exit__ but unsure if app runs without erros.
+        delete_files(glob.glob(os.path.join(self.out_dir, "*.mp4")))
 
     def _run(self, every_seconds: int):
         logger.info("ClipRecorder started.")
         last_flush = time.time()
-        current_stream = get_stream_source()
+        stream = get_stream_source()
 
         while self.running:
-            try:
-                frame = next(current_stream)
-            except StopIteration:
-                current_stream = get_stream_source()
-                continue
+            frames = []
+            target_frames = int(self.buffer_seconds * self.fps)
+            frame_interval = 1 / self.fps
 
-            self.buffer.append(frame.copy())
+            for _ in range(target_frames):
+                try:
+                    frame = next(stream)
+                except StopIteration:
+                    logger.warning("Stream ended, restarting...")
+                    stream = get_stream_source()
+                    continue
 
-            # Detect and respond to stream type change
-            current_stream = get_stream_source()
+                frames.append(frame.copy())
+                time.sleep(frame_interval)
 
-            if time.time() - last_flush >= every_seconds:
-                last_flush = time.time()
-                if len(self.buffer) >= self.fps:
-                    self._flush_clip()
+            filename = f"{self.out_dir}/clip_{self.counter:03d}.mp4"
+            self.counter += 1
+            write_video(frames, filename, fps=self.fps)
+
+            if os.path.exists(filename):
+                self.flush_callback(full_path(filename))
+
+            # Wait until next interval round
+            total_wait = every_seconds - self.buffer_seconds
+            if total_wait > 0:
+                time.sleep(total_wait)
 
     def start(
             self,
@@ -66,17 +74,6 @@ class ClipRecorder:
             args=(every_seconds,),
             daemon=True
         ).start()
-
-    def _flush_clip(self):
-        frames = list(self.buffer)
-        filename = f"{self.out_dir}/clip_{self.counter:03d}.mp4"
-
-        self.counter += 1
-        logger.debug(f"Saving {len(frames)} buffered frames to [{filename}].")
-        write_video(frames, filename, fps=self.fps)
-
-        if os.path.exists(filename):
-            self.flush_callback(full_path(filename))
 
     def stop(self):
         self.running = False
