@@ -23,6 +23,7 @@ function sendMessage() {
     ws.send(JSON.stringify(payload));
     addChatMessage("user", text);
     msgInput.value = "";
+    saveBtn.disabled = true;
 }
 
 
