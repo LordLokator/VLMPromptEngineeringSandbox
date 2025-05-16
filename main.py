@@ -4,7 +4,7 @@ import threading
 import time
 from loguru import logger
 from vlm_serve import VLM
-from web_engine import start_server
+from web_engine import start_server_threaded
 
 from streaming import get_stream_source
 from video_hanlding.clip_handling import ClipRecorder
@@ -13,17 +13,11 @@ logger.remove()
 logger.add(sys.stderr, level="DEBUG")
 
 
-def run_web_server():
-    logger.info("Starting web server thread...")
-    start_server()
-
-
 def main():
     logger.info("Main app initialization...")
 
     # Start server in separate thread
-    server_thread = threading.Thread(target=run_web_server, daemon=True)
-    server_thread.start()
+    start_server_threaded(prompt)
 
     # Instantiate VLM
     # vlm = VLM()
