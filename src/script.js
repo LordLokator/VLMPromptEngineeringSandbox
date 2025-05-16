@@ -32,9 +32,17 @@ ws.onmessage = (event) => {
 function sendMessage() {
     const text = msgInput.value.trim();
     if (!text) return;
-    const payload = { role: "user", text };
+
+    const temperature = parseFloat(document.getElementById("tempSlider").value);
+    const payload = {
+        role: "user",
+        text: text,
+        temperature: temperature
+    };
+
     ws.send(JSON.stringify(payload));
     addChatMessage("user", text);
+
     msgInput.value = "";
     saveBtn.disabled = true;
 }
@@ -145,6 +153,10 @@ document.getElementById('video').addEventListener('contextmenu', function (e) {
     e.preventDefault();
 });
 
+document.getElementById("tempSlider").addEventListener("input", () => {
+    const val = document.getElementById("tempSlider").value;
+    document.getElementById("tempVal").textContent = val;
+});
 
 window.onload = () => {
     loadPresetButtons();

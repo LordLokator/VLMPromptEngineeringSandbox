@@ -69,3 +69,7 @@ body {
     color: #198754;
     font-style: italic;
 }
+
+#tempSlider {
+    width: 100%;
+}
