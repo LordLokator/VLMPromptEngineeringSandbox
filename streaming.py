@@ -5,7 +5,7 @@ from loguru import logger
 from utils.file_management import full_path
 
 FALLBACK_IMAGE = "src/error.jpeg"
-VIDEO_PATH = full_path("~/Videos/1.mp4")
+VIDEO_PATH = full_path("./static_video/street_view.mp4")
 USE_LIVE_CAMERA = {'value': False}
 
 
@@ -55,31 +55,8 @@ def video_stream_generator():
         # Check if mode changed mid-stream
         if USE_LIVE_CAMERA["value"] != current_mode:
             logger.info("Stream mode changed — switching generator")
-            return  # Kill this generator, client should reconnect (see notes)
+            return  # Kill generator
 
         _, jpeg = cv2.imencode('.jpg', frame)
         yield (b'--frame\r\n'
                b'Content-Type: image/jpeg\r\n\r\n' + jpeg.tobytes() + b'\r\n')
-
-# def video_stream_generator():
-#     cap = cv2.VideoCapture(VIDEO_PATH)
-#     if not cap.isOpened():
-#         logger.error(f"Cannot open video: {VIDEO_PATH}")
-#         return
-
-#     fps = cap.get(cv2.CAP_PROP_FPS)
-
-#     # delay = 0 # Use if the source is a webcam
-#     delay = 1 / fps if fps > 0 else 1 / 30  # Fallback: 30 fps
-
-#     while True:
-#         success, frame = cap.read()
-#         if not success:
-#             logger.info("End of video stream.")
-#             break
-
-#         _, jpeg = cv2.imencode('.jpg', frame)
-#         frame_bytes = jpeg.tobytes()
-#         yield (b'--frame\r\n'
-#                b'Content-Type: image/jpeg\r\n\r\n' + frame_bytes + b'\r\n')
-#         time.sleep(delay)  # Match real-time playback

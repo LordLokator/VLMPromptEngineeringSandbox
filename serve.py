@@ -16,7 +16,8 @@ DEVICE = "cuda:0"
 MAX_FRAMES: int = 60
 FPS = 60
 
-DEMO_VID_PATH = full_path('~/Videos/1.mp4')
+DEMO_VID_PATH = full_path('./static_video/street_view.mp4')
+
 
 def main():
 
