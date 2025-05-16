@@ -20,16 +20,14 @@ class ClipRecorder:
         self.out_dir = "./tmp"
         self.running = False
         self.counter = 0
-        self.flush_callback: Callable = lambda path: print(path)
+        self.flush_callback: Callable = lambda path: print(f"!!! {path} !!!") # for debugging purposes
 
         # Create './tmp' if it doesn't exists:
         os.makedirs(self.out_dir, exist_ok=True)
-
-        # If folder not empty, clear.
-        # Should be something like __exit__ but unsure if app runs without erros.
+        # ... clean if it does:
         delete_files(glob.glob(os.path.join(self.out_dir, "*.mp4")))
 
-    def _run(self, every_seconds: int):
+    def _run(self):
         logger.info("ClipRecorder started.")
         stream = get_stream_source()
 
@@ -41,36 +39,35 @@ class ClipRecorder:
             for _ in range(target_frames):
                 try:
                     frame = next(stream)
+                    frames.append(frame.copy())
                 except StopIteration:
                     logger.warning("Stream ended, restarting...")
                     stream = get_stream_source()
                     continue
 
-                frames.append(frame.copy())
                 time.sleep(frame_interval)
 
             filename = f"{self.out_dir}/clip_{self.counter:03d}.mp4"
             self.counter += 1
-            write_video(frames, filename, fps=self.fps)
 
-            if os.path.exists(filename):
-                self.flush_callback(full_path(filename))
+            try:
+                write_video(frames, filename, fps=self.fps)
+                full_pathname = full_path(filename)
+                logger.debug(f"Calling flush_callback with: {full_pathname}")
+                self.flush_callback(full_pathname)
 
-            # Wait until next interval round
-            total_wait = every_seconds - self.buffer_seconds
-            if total_wait > 0:
-                time.sleep(total_wait)
+            except Exception as e:
+                logger.error(f"Video writing or callback failed: {e}")
 
     def start(
             self,
-            every_seconds: int = 10,
             flush_callback: Callable = lambda _: None
     ):
         self.flush_callback = flush_callback
         self.running = True
+
         threading.Thread(
             target=self._run,
-            args=(every_seconds,),
             daemon=True
         ).start()
 
