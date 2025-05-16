@@ -34,12 +34,16 @@ async def websocket_endpoint(ws: WebSocket):
             msg = await ws.receive_text()
             if msg == "toggle_stream":
                 USE_LIVE_CAMERA["value"] = not USE_LIVE_CAMERA["value"]
+
                 state = "Live camera" if USE_LIVE_CAMERA["value"] else "Static video"
                 logger.info(f"Toggled stream source → {state}")
+
                 await ws.send_text(f"Switched to: {state}")
             else:
                 logger.info(f"Received from client: {msg}")
+
             await ws.send_text(f"Echo: {msg}")
+
     except WebSocketDisconnect:
         logger.info("Client disconnected")
 
