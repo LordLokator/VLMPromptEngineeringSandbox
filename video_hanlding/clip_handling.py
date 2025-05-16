@@ -20,7 +20,7 @@ class ClipRecorder:
         self.out_dir = "./tmp"
         self.running = False
         self.counter = 0
-        self.flush_callback: Callable = lambda _: None
+        self.flush_callback: Callable = lambda path: print(path)
 
         # Create './tmp' if it doesn't exists:
         os.makedirs(self.out_dir, exist_ok=True)
@@ -31,7 +31,6 @@ class ClipRecorder:
 
     def _run(self, every_seconds: int):
         logger.info("ClipRecorder started.")
-        last_flush = time.time()
         stream = get_stream_source()
 
         while self.running:
