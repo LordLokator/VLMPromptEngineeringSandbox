@@ -73,3 +73,8 @@ body {
 #tempSlider {
     width: 100%;
 }
+
+#msgInput {
+    resize: vertical;
+    border-radius: 10px;
+}

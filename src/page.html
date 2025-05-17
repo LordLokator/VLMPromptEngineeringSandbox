@@ -16,30 +16,31 @@
                 <div>
                     <img id="video" src="/video_feed" />
                 </div>
-                <!-- Preset Button Panel -->
-                <div id="presetBar" class="d-flex flex-wrap gap-2 mb-2">
-                    <!-- Buttons will be added here dynamically -->
-                </div>
 
-                <div id="inputPanel" class="align-items-center">
-                    <!-- Preset Buttons and Save -->
-                    <div id="presetBar" class="d-flex flex-wrap gap-2 mb-2"></div>
-                    <div class="mb-2">
-                        <button id="savePresetBtn" class="btn btn-outline-success btn-sm" disabled>
+                <!-- Preset Buttons -->
+                <div id="presetBar" class="d-flex flex-wrap gap-2 mb-2"></div>
+
+                <!-- Input Panel -->
+                <div id="inputPanel" class="d-flex flex-column gap-2">
+                    <textarea id="msgInput" class="form-control" rows="3" placeholder="Enter your prompt..."></textarea>
+
+                    <div class="d-flex flex-wrap gap-2">
+                        <button id="savePresetBtn" class="btn btn-outline-success" disabled>
                             💾 Save as Preset
                         </button>
+                        <button id="toggleStream" class="btn btn-outline-secondary" onclick="toggleStream()">
+                            Toggle Stream
+                        </button>
+                        <button class="btn btn-primary" onclick="sendMessage()">
+                            Send
+                        </button>
                     </div>
-                    <input id="msgInput" type="text" class="form-control" placeholder="New prompt..." />
-                    <button class="btn btn-primary" onclick="sendMessage()">Send</button>
-                    <div class="mb-2">
+
+                    <div>
                         <label for="tempSlider" class="form-label">Temperature: <span id="tempVal">0.01</span></label>
                         <input type="range" class="form-range" min="0" max="1" step="0.01" id="tempSlider"
                             value="0.01" />
                     </div>
-
-                    <button id="toggleStream" class="btn btn-outline-secondary" onclick="toggleStream()">
-                        Toggle Stream
-                    </button>
                 </div>
             </div>
 
@@ -50,7 +51,7 @@
         </div>
     </div>
     <script src="/src/script.js"></script>
-
 </body>
+
 
 </html>
