@@ -158,6 +158,10 @@ document.getElementById("tempSlider").addEventListener("input", () => {
     document.getElementById("tempVal").textContent = val;
 });
 
+document.getElementById("clearChatBtn").onclick = () => {
+    chat.innerHTML = "";
+};
+
 window.onload = () => {
     loadPresetButtons();
     updateSaveButtonState();
