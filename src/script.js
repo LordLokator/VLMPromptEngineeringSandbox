@@ -135,7 +135,8 @@ saveBtn.onclick = async () => {
     const result = await res.json();
     if (result.status === "ok") {
         const btn = document.createElement("button");
-        btn.className = `btn btn-sm rounded-pill text-white ${getRandomColorClass()}`;
+        btn.className = `btn btn-sm rounded-pill text-white`;
+        btn.style.backgroundColor = getRandomColor();
         btn.textContent = cleanLabel;
         btn.title = text;
         btn.onclick = () => {
