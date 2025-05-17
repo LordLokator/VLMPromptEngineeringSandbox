@@ -22,6 +22,12 @@
 
                 <!-- Input Panel -->
                 <div id="inputPanel" class="d-flex flex-column gap-2">
+                    <div>
+                        <label for="tempSlider" class="form-label">Temperature: <span id="tempVal">0.01</span></label>
+                        <input type="range" class="form-range" min="0" max="1" step="0.01" id="tempSlider"
+                            value="0.01" />
+                    </div>
+
                     <textarea id="msgInput" class="form-control" rows="3" placeholder="Enter your prompt..."></textarea>
 
                     <div class="d-flex flex-wrap gap-2">
@@ -34,12 +40,6 @@
                         <button class="btn btn-primary" onclick="sendMessage()">
                             Send
                         </button>
-                    </div>
-
-                    <div>
-                        <label for="tempSlider" class="form-label">Temperature: <span id="tempVal">0.01</span></label>
-                        <input type="range" class="form-range" min="0" max="1" step="0.01" id="tempSlider"
-                            value="0.01" />
                     </div>
                 </div>
             </div>
