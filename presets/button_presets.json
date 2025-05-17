@@ -1,8 +1,38 @@
 [
-  { "label": "red car", "text": "Is there a red car in the video?" },
-  { "label": "people", "text": "Are there people visible?" },
-  { "label": "night", "text": "Is it night or day?" },
-  { "label": "animals", "text": "Are there any animals?" },
-  { "label": "license plate", "text": "Can you read the license plate?" },
-  { "label": "weather", "text": "What is the weather like?" }
+  {
+    "label": "Dominant Action",
+    "text": "Identify the most dominant human or vehicle action occurring in the scene (e.g., 'parking', 'walking', 'waiting', 'talking')."
+  },
+  {
+    "label": "Crossing",
+    "text": "Are any pedestrians actively crossing the street? If yes, describe their direction and any interactions with vehicles. Otherwise, answer 'None.'"
+  },
+  {
+    "label": "Vehicle Types",
+    "text": "List all visible vehicle types (e.g., sedan, truck, bicycle) and count each. Use a format like: '2 sedans, 1 truck'."
+  },
+  {
+    "label": "Groups",
+    "text": "Are any groups of people interacting socially (e.g., talking, walking together)? If yes, describe their group size and behavior."
+  },
+  {
+    "label": "Unusual Behavior",
+    "text": "Detect any unusual or out-of-place behavior for a sunny street setting (e.g., someone running fast, a car parked oddly). If none, answer 'None.'"
+  },
+  {
+    "label": "Activity",
+    "text": "Summarize the overall street activity level: Low / Moderate / High. Justify your answer in one short sentence."
+  },
+  {
+    "label": "Sun",
+    "text": "Does the sunlight significantly affect visibility (e.g., glare, long shadows)? Describe how it influences perception."
+  },
+  {
+    "label": "Parking Events",
+    "text": "Are there any cars '''in the act''' of parking or unparking? If yes, describe the vehicle and the motion. Else, write 'None.'"
+  },
+  {
+    "label": "OCR Pass",
+    "text": "Extract all visible text from the video frames. This includes license plates, street signs, shop signs, or any readable text. Format the result as a bullet list. If no readable text is found, return '''None.'''."
+  }
 ]
