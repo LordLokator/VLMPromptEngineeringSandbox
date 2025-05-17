@@ -61,13 +61,15 @@ async def websocket_endpoint(ws: WebSocket):
                     await ws.send_text(json.dumps(system_msg))
 
                 else:
-                    # if PROMPT:
-                    #     PROMPT.set(text)
                     if temperature is not None:
                         global TEMPERATURE
 
                         TEMPERATURE = float(temperature)
                         logger.info(f"Temperature set to: {TEMPERATURE:.2f}")
+
+                    if text:
+                        prompt.set(text)
+                        logger.info(f"Prompt updated to: {text}")
 
                     echo_msg = {"role": "system", "text": f"Prompt changed to: {text}, Temperature: {TEMPERATURE:.2f}"}
                     await ws.send_text(json.dumps(echo_msg))
@@ -165,7 +167,6 @@ async def broadcast(message: str):
 
 
 def start_server_threaded(prompt=None):
-    global PROMPT
 
     app.state.prompt = prompt
 
