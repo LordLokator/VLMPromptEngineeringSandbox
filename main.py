@@ -13,8 +13,9 @@ from video_hanlding.clip_handling import ClipRecorder
 logger.remove()
 logger.add(sys.stderr, level="DEBUG")
 
-FPS = 30
-MAX_FRAMES = 120
+FPS = 10
+SEC = 0.5 # Buffer in seconds
+MAX_FRAMES = 20
 
 
 def main():
@@ -81,6 +82,7 @@ def main():
             time.sleep(1)
     except KeyboardInterrupt:
         logger.info("Exited with KeyboardInterrupt.")
+        executor.shutdown()
         recorder.stop()
 
 
