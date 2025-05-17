@@ -45,7 +45,7 @@ def main():
         try:
             start = timeit.default_timer()
 
-            output, temperature = vlm.forward(
+            output, _temperature = vlm.forward(
                 video_path=clip_path,
                 fps=FPS,
                 max_frames=MAX_FRAMES,
@@ -54,7 +54,7 @@ def main():
 
             delay = timeit.default_timer() - start
 
-            _message = f"VLM Response (t: {temperature:.2f} | Δ: {delay:.2f}s): {output}"
+            _message = f"VLM Response (t: {_temperature:.2f} | Δ: {delay:.2f}s): {output}"
             logger.info(_message)
 
             # Send to frontend
