@@ -172,7 +172,7 @@ def start_server_threaded(prompt=None):
 
     t = threading.Thread(
         target=start_server,
-        daemon=False
+        daemon=True
     )
     t.start()
 

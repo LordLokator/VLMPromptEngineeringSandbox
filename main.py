@@ -82,7 +82,7 @@ def main():
             time.sleep(1)
     except KeyboardInterrupt:
         logger.info("Exited with KeyboardInterrupt.")
-        executor.shutdown()
+        executor.shutdown(wait=False, cancel_futures=True)
         recorder.stop()
 
 
