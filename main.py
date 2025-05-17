@@ -28,7 +28,7 @@ def main():
 
     # Create Video stream
     recorder = ClipRecorder(
-        buffer_seconds=1,
+        buffer_seconds=SEC,
         fps=FPS
     )
 
