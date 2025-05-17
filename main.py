@@ -3,6 +3,7 @@ import sys
 import time
 import timeit
 from loguru import logger
+from concurrent.futures import ThreadPoolExecutor
 
 from prompting.prompting import Prompt
 from utils.vlm_wrapper import VLM
@@ -34,9 +35,13 @@ def main():
     # Instantiate VLM
     vlm = VLM(prompt)
 
+    executor = ThreadPoolExecutor(max_workers=1)
+
     def on_clip_flush(clip_path: str):
         logger.info(f"Clip flushed: {clip_path}")
+        executor.submit(process_clip, clip_path)
 
+    def process_clip(clip_path: str):
         try:
             start = timeit.default_timer()
 
