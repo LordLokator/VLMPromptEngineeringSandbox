@@ -15,7 +15,7 @@ ws.onmessage = (event) => {
         const data = JSON.parse(event.data);
 
         if (data.output) {
-            const text = `${data.output} (Processed in ${data.delay.toFixed(2)}s)`;
+            const text = `${data.output} (Δt: ${data.delay.toFixed(2)}s)`;
             addChatMessage("vlm", text);
         } else if (data.role && data.text) {
             addChatMessage(data.role, data.text);
