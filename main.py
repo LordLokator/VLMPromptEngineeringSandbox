@@ -3,10 +3,10 @@ import sys
 import time
 import timeit
 from loguru import logger
+
 from prompting.prompting import Prompt
 from utils.vlm_wrapper import VLM
 from web_engine import start_server_threaded, broadcast_sync, TEMPERATURE
-
 from video_hanlding.clip_handling import ClipRecorder
 
 logger.remove()
@@ -49,7 +49,7 @@ def main():
 
             delay = timeit.default_timer() - start
 
-            _message = f"VLM Response (after {delay:.2f}s): {output}"
+            _message = f"VLM Response (t: {temperature:.2f} | Δ: {delay:.2f}s): {output}"
             logger.info(_message)
 
             # Send to frontend
