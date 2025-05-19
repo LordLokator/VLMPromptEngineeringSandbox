@@ -8,8 +8,6 @@ from loguru import logger
 from prompting.prompting import Prompt
 
 MAX_NEW_TOKENS = 1024
-# TEMP = 0.01
-SAVE_TO_FOLDER = './demo'
 MODEL_PATH = "DAMO-NLP-SG/VideoLLaMA3-7B"
 DEVICE = "cuda:0"
 
