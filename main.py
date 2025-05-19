@@ -8,7 +8,7 @@ from concurrent.futures import ThreadPoolExecutor
 from prompting.prompting import Prompt
 from utils.vlm_wrapper import VLM
 from web_engine import start_server_threaded, broadcast_sync, TEMPERATURE
-from video_hanlding.clip_handling import ClipRecorder
+from video_handling.clip_handling import ClipRecorder
 
 logger.remove()
 logger.add(sys.stderr, level="DEBUG")
