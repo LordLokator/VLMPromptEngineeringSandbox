@@ -9,8 +9,8 @@ from typing import Callable
 from loguru import logger
 
 from utils.file_management import delete_files, full_path
-from video_hanlding.write_video import write_video
-from video_hanlding.streaming import get_stream_source
+from video_handling.write_video import write_video
+from video_handling.streaming import get_stream_source
 
 
 class ClipRecorder:
