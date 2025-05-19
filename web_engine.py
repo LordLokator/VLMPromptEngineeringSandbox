@@ -12,7 +12,7 @@ from loguru import logger
 import threading
 import uvicorn
 
-from streaming import video_stream_generator, USE_LIVE_CAMERA
+from video_hanlding.streaming import video_stream_generator, USE_LIVE_CAMERA
 
 TEMPERATURE: float = 0.01
 

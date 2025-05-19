@@ -10,7 +10,7 @@ from loguru import logger
 
 from utils.file_management import delete_files, full_path
 from video_hanlding.write_video import write_video
-from streaming import get_stream_source
+from video_hanlding.streaming import get_stream_source
 
 
 class ClipRecorder:
