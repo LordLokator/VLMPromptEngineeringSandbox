@@ -91,13 +91,6 @@ def video_feed():
     )
 
 
-@app.get("/vlm_output")
-def vlm_output():
-    return {
-        "output": "Output dummy"
-    }
-
-
 @app.get("/metadata")
 def metadata():
     return {
