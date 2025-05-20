@@ -1,6 +1,6 @@
 # Custom
 # ignore .tmp/videos:
-*.mp4
+*tmp/*.mp4
 
 # Byte-compiled / optimized / DLL files
 __pycache__/
