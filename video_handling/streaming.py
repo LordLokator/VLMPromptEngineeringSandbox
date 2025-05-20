@@ -5,27 +5,38 @@ from loguru import logger
 from utils.file_management import full_path
 
 FALLBACK_IMAGE = "src/error.jpeg"
-VIDEO_PATH = full_path("./static_video/street_view.mp4")
 USE_LIVE_CAMERA = {'value': False}
+VIDEO_PATHS = [
+    full_path("./static_video/street_view_1.mp4"),
+    full_path("./static_video/street_view_2.mp4")
+]
+VIDEO_IDX = 0
 
 
 def static_video():
-    cap = cv2.VideoCapture(VIDEO_PATH)
-    if not cap.isOpened():
-        logger.error("Failed to open static video.")
-        return None
-    fps = cap.get(cv2.CAP_PROP_FPS) or 30
-    delay = 1 / fps
+    cap, fps, delay = _init_video_object(VIDEO_PATHS[VIDEO_IDX])
+
     while True:
         ret, frame = cap.read()
         if not ret:
-            cap.set(cv2.CAP_PROP_POS_FRAMES, 0)
+            VIDEO_IDX = (VIDEO_IDX + 1) % len(VIDEO_PATHS)
+            cap, fps, delay = _init_video_object(VIDEO_PATHS[VIDEO_IDX])
             continue
+
         start = time.time()
         yield frame
         elapsed = time.time() - start
         time.sleep(max(0, delay - elapsed))
 
+def _init_video_object(path: str):
+    cap = cv2.VideoCapture(path)
+    if not cap.isOpened():
+        logger.error("Failed to open static video.")
+        return (None, 0, 0)
+
+    fps = cap.get(cv2.CAP_PROP_FPS) or 30
+    delay = 1 / fps
+    return (cap, fps, delay)
 
 def live_stream():
     cap = cv2.VideoCapture(0)
