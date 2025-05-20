@@ -8,12 +8,13 @@ FALLBACK_IMAGE = "src/error.jpeg"
 USE_LIVE_CAMERA = {'value': False}
 VIDEO_PATHS = [
     full_path("./static_video/street_view_1.mp4"),
-    full_path("./static_video/street_view_2.mp4")
 ]
 VIDEO_IDX = 0
 
 
 def static_video():
+    global VIDEO_IDX
+
     cap, fps, delay = _init_video_object(VIDEO_PATHS[VIDEO_IDX])
 
     while True:
