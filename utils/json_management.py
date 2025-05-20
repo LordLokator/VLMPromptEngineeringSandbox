@@ -20,8 +20,13 @@ def append_dict_to_json(file_path: str, new_data: dict):
             logger.info("JSON file is empty or invalid. Starting fresh.")
             data = []
 
-        data.append(new_data)
-        f.seek(0)
-        json.dump(data, f, indent=4)
-        f.truncate()
-        logger.info(f"Appended data to JSON: {new_data}")
+        if data[-1] != new_data:
+            data.append(new_data)
+            f.seek(0)
+            json.dump(data, f, indent=4)
+            f.truncate()
+
+            logger.info(f"Appended data to JSON: {new_data}")
+
+        else:
+            logger.debug(f"Prompt remains the same, history not updated.")
