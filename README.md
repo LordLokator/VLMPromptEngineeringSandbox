@@ -121,7 +121,7 @@ Device: cuda:0
 ## Quick Setup
 
 ```
-git clone https://github.com/LordLokator/prompt_engineering_course VLMDemo
+git clone https://github.com/LordLokator/VLMPromptEngineeringSandbox VLMDemo
 cd VLMDemo
 bash setup.sh
 source .venv/bin/activate
