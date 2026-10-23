@@ -1,6 +1,6 @@
 loguru
 transformers==4.46.3
-torch==2.2.0
+torch==2.13.0
 opencv-python
 ffmpeg-python
 imageio-ffmpeg
