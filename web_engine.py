@@ -15,8 +15,8 @@ import uvicorn
 from utils.file_management import BASE_DIR
 from video_handling.streaming import video_stream_generator, USE_LIVE_CAMERA
 
-HOST: str = os.environ.get("HOST", "127.0.0.1")
-PORT: int = int(os.environ.get("PORT", "8000"))
+HOST: str = os.environ.get("VLM_HOST", "127.0.0.1")
+PORT: int = int(os.environ.get("VLM_PORT", "8000"))
 IS_LOOPBACK: bool = HOST in ("127.0.0.1", "localhost", "::1")
 
 active_connections: list[WebSocket] = []
