@@ -32,6 +32,27 @@ async def favicon():
     return FileResponse("src/favicon.ico", media_type="image/x-icon")
 
 
+MAX_TEXT_CHARS = 2000
+
+
+def parse_client_message(raw: str) -> tuple[dict | None, str | None]:
+    """Return (message, None) for a valid client frame, else (None, error text)."""
+    try:
+        msg = json.loads(raw)
+    except json.JSONDecodeError:
+        return None, "Invalid JSON"
+    if not isinstance(msg, dict):
+        return None, "Message must be a JSON object"
+    text = msg.get("text", "")
+    if not isinstance(text, str):
+        return None, "text must be a string"
+    if len(text) > MAX_TEXT_CHARS:
+        return None, f"text too long (max {MAX_TEXT_CHARS} characters)"
+    if not isinstance(msg.get("role", ""), str):
+        return None, "role must be a string"
+    return msg, None
+
+
 @app.websocket("/ws")
 async def websocket_endpoint(ws: WebSocket):
     prompt = ws.app.state.prompt
@@ -43,7 +64,11 @@ async def websocket_endpoint(ws: WebSocket):
     try:
         while True:
             raw = await ws.receive_text()
-            msg: dict[str, str] = json.loads(raw)
+            msg, err = parse_client_message(raw)
+            if msg is None:
+                logger.warning(f"Rejected client frame: {err}")
+                await ws.send_text(json.dumps({"role": "error", "text": err}))
+                continue
             role = msg.get("role")
             text = msg.get("text", "")
             logger.debug(f"Received msg: role={role!r} text={text[:80]!r}")
@@ -58,14 +83,17 @@ async def websocket_endpoint(ws: WebSocket):
                     await ws.send_text(json.dumps(system_msg))
 
                 else:
-                    if temperature is not None:
-                        settings.set_temperature(temperature)
-                        logger.info(f"Temperature set to: {settings.get_temperature():.2f}")
-
                     resample_fps = msg.get("resample_fps", None)
-                    if resample_fps is not None:
-                        settings.set_resample_fps(resample_fps)
-                        logger.info(f"Resample fps set to: {settings.get_resample_fps()}")
+                    try:
+                        if temperature is not None:
+                            settings.set_temperature(temperature)
+                            logger.info(f"Temperature set to: {settings.get_temperature():.2f}")
+                        if resample_fps is not None:
+                            settings.set_resample_fps(resample_fps)
+                            logger.info(f"Resample fps set to: {settings.get_resample_fps()}")
+                    except ValueError as e:
+                        await ws.send_text(json.dumps({"role": "error", "text": str(e)}))
+                        continue
 
                     if text:
                         prompt.set(text)
@@ -86,7 +114,9 @@ async def websocket_endpoint(ws: WebSocket):
 
     except WebSocketDisconnect:
         logger.info("Client disconnected")
-        active_connections.remove(ws)
+    finally:
+        if ws in active_connections:
+            active_connections.remove(ws)
 
 
 @app.get("/video_feed")
