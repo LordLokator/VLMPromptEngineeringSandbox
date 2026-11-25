@@ -1,19 +1,18 @@
-loguru
+# GPU stack: pinned together; bump only after a GPU smoke test
 transformers==4.46.3
 torch==2.2.0
+numpy==1.24.4
+accelerate
+decord
+
+# Video / image I/O
 opencv-python
 ffmpeg-python
 imageio-ffmpeg
 imageio
-decord
-accelerate
-wheel
 
-numpy==1.24.4
-Flask
-flask_socketio
-flask-cors
-python-socketio[client]
-
+# Web server (uvicorn[standard] brings the websockets library needed for /ws)
 fastapi
-uvicorn
+uvicorn[standard]
+
+loguru
