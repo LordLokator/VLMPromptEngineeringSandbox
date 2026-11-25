@@ -2,12 +2,12 @@ import time
 import cv2
 from loguru import logger
 
-from utils.file_management import full_path
+from utils.file_management import BASE_DIR
 
-FALLBACK_IMAGE = "src/error.jpeg"
+FALLBACK_IMAGE = str(BASE_DIR / "src" / "error.jpeg")
 USE_LIVE_CAMERA = {'value': False}
 VIDEO_PATHS = [
-    full_path("./static_video/street_view_1.mp4"),
+    str(BASE_DIR / "static_video" / "street_view_1.mp4"),
 ]
 VIDEO_IDX = 0
 

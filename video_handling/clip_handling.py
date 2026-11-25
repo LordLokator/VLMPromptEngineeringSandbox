@@ -7,7 +7,7 @@ import time
 from typing import Callable
 from loguru import logger
 
-from utils.file_management import delete_files, full_path
+from utils.file_management import BASE_DIR, delete_files, full_path
 from video_handling.write_video import write_video
 from video_handling.streaming import get_stream_source
 
@@ -16,12 +16,12 @@ class ClipRecorder:
     def __init__(self, buffer_seconds: int = 3, fps: int = 10):
         self.buffer_seconds = buffer_seconds
         self.fps = fps
-        self.out_dir = "./tmp"
+        self.out_dir = str(BASE_DIR / "tmp")
         self.running = False
         self.counter = 0
         self.flush_callback: Callable = lambda path: logger.debug(f"Clip flushed: {path}")
 
-        # Create './tmp' if it doesn't exists:
+        # Create '<repo>/tmp' if it doesn't exists:
         os.makedirs(self.out_dir, exist_ok=True)
         # ... clean if it does:
         delete_files(glob.glob(os.path.join(self.out_dir, "*.mp4")))
