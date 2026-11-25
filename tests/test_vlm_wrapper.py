@@ -1,8 +1,10 @@
 import subprocess
 import sys
+import types
 
 import pytest
 
+from utils import vlm_wrapper
 from utils.vlm_wrapper import VLM
 
 
@@ -68,3 +70,28 @@ def test_forward_empty_decode_returns_empty_str(fake_torch):
     vlm = make_vlm(FakeProcessor(decoded=[]))
     output, _ = vlm.forward("clip.mp4", 10, 20)
     assert output == ""
+
+
+@pytest.fixture
+def from_pretrained_calls(fake_torch, monkeypatch):
+    calls: dict[str, dict] = {}
+
+    def recorder(name):
+        def from_pretrained(path, **kwargs):
+            calls[name] = {"path": path, **kwargs}
+            return object()
+        return from_pretrained
+
+    stub = types.SimpleNamespace(
+        AutoModelForCausalLM=types.SimpleNamespace(from_pretrained=recorder("model")),
+        AutoProcessor=types.SimpleNamespace(from_pretrained=recorder("processor")),
+    )
+    monkeypatch.setitem(sys.modules, "transformers", stub)
+    return calls
+
+
+def test_model_revision_is_pinned(from_pretrained_calls):
+    VLM(FakePrompt())
+    assert from_pretrained_calls["model"]["revision"] == vlm_wrapper.MODEL_REVISION
+    assert from_pretrained_calls["processor"]["revision"] == vlm_wrapper.MODEL_REVISION
+    assert len(vlm_wrapper.MODEL_REVISION) == 40

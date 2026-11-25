@@ -10,6 +10,9 @@ from prompting.prompting import Prompt
 
 MAX_NEW_TOKENS = 1024
 MODEL_PATH = "DAMO-NLP-SG/VideoLLaMA3-7B"
+# Pinned because trust_remote_code=True runs code from the repo. HF DAMO-NLP-SG/VideoLLaMA3-7B,
+# last modified 2025-09-02, checked 2026-11-25.
+MODEL_REVISION = "d5b763e368861e7f5096e7ff1b49f92fbccf8ae6"
 DEVICE = "cuda:0"
 
 
@@ -23,6 +26,7 @@ class VLM:
 
         self.model: Any = AutoModelForCausalLM.from_pretrained(
             MODEL_PATH,
+            revision=MODEL_REVISION,
             trust_remote_code=True,
             device_map={"": DEVICE},
             torch_dtype=torch.bfloat16,
@@ -31,6 +35,7 @@ class VLM:
 
         self.processor: Any = AutoProcessor.from_pretrained(
             MODEL_PATH,
+            revision=MODEL_REVISION,
             trust_remote_code=True
         )
         logger.info("Instantiated models.")
