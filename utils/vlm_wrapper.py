@@ -2,6 +2,7 @@
 
 Heavy imports are lazy so everything else is testable without torch.
 """
+import os
 from typing import Any
 
 from loguru import logger
@@ -14,6 +15,8 @@ MODEL_PATH = "DAMO-NLP-SG/VideoLLaMA3-7B"
 # last modified 2025-09-02, checked 2026-11-25.
 MODEL_REVISION = "d5b763e368861e7f5096e7ff1b49f92fbccf8ae6"
 DEVICE = "cuda:0"
+# Override e.g. on pre-Ampere GPUs or without flash-attn installed.
+ATTN_IMPL = os.environ.get("VLM_ATTN_IMPL", "flash_attention_2")
 
 
 class VLM:
@@ -24,13 +27,14 @@ class VLM:
         self.sys_prompt = "You are a helpful assistant."
         self.prompt_obj = prompt
 
+        logger.info(f"Attention implementation: {ATTN_IMPL}")
         self.model: Any = AutoModelForCausalLM.from_pretrained(
             MODEL_PATH,
             revision=MODEL_REVISION,
             trust_remote_code=True,
             device_map={"": DEVICE},
             torch_dtype=torch.bfloat16,
-            attn_implementation="flash_attention_2"
+            attn_implementation=ATTN_IMPL
         )
 
         self.processor: Any = AutoProcessor.from_pretrained(

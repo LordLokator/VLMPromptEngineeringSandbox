@@ -1,3 +1,4 @@
+import importlib
 import subprocess
 import sys
 import types
@@ -95,3 +96,19 @@ def test_model_revision_is_pinned(from_pretrained_calls):
     assert from_pretrained_calls["model"]["revision"] == vlm_wrapper.MODEL_REVISION
     assert from_pretrained_calls["processor"]["revision"] == vlm_wrapper.MODEL_REVISION
     assert len(vlm_wrapper.MODEL_REVISION) == 40
+
+
+def test_attn_impl_default_reaches_model(from_pretrained_calls):
+    VLM(FakePrompt())
+    assert from_pretrained_calls["model"]["attn_implementation"] == "flash_attention_2"
+
+
+def test_attn_impl_env_override(from_pretrained_calls, monkeypatch):
+    monkeypatch.setenv("VLM_ATTN_IMPL", "eager")
+    try:
+        importlib.reload(vlm_wrapper)
+        vlm_wrapper.VLM(FakePrompt())
+        assert from_pretrained_calls["model"]["attn_implementation"] == "eager"
+    finally:
+        monkeypatch.delenv("VLM_ATTN_IMPL")
+        importlib.reload(vlm_wrapper)
