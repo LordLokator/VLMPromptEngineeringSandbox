@@ -36,6 +36,8 @@ Tested on Ubuntu + RTX 4090.
 
 - 🌡 Adjustable temperature (UI-controlled)
 
+- 🎞 Adjustable resample FPS (UI-controlled; snapped to the rate the processor really uses)
+
 - 🧵 Thread-safe prompt updates
 
 - 💾 Persistent user presets

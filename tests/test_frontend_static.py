@@ -44,3 +44,11 @@ def test_save_flow_clears_after_success():
     clear = handler.index('msgInput.value = ""')
     assert clear > check
     assert src.count("fetch(") == 1, "all requests go through fetchWithTimeout"
+
+
+def test_resample_slider_and_payload():
+    html = (SCRIPT.parent / "page.html").read_text(encoding="utf-8")
+    js = SCRIPT.read_text(encoding="utf-8")
+    assert 'id="fpsSlider"' in html and 'min="1" max="10" step="1"' in html
+    assert 'min="0.01"' in html  # temperature slider must not allow 0
+    assert "resample_fps" in js

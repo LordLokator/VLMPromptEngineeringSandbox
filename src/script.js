@@ -73,7 +73,8 @@ function sendMessage() {
     const payload = {
         role: "user",
         text: text,
-        temperature: temperature
+        temperature: temperature,
+        resample_fps: parseInt(document.getElementById("fpsSlider").value, 10)
     };
 
     if (!send(payload)) return;
@@ -224,6 +225,10 @@ document.getElementById('video').addEventListener('contextmenu', function (e) {
 document.getElementById("tempSlider").addEventListener("input", () => {
     const val = document.getElementById("tempSlider").value;
     document.getElementById("tempVal").textContent = val;
+});
+
+document.getElementById("fpsSlider").addEventListener("input", () => {
+    document.getElementById("fpsVal").textContent = document.getElementById("fpsSlider").value;
 });
 
 document.getElementById("clearChatBtn").onclick = () => {

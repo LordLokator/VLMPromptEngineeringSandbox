@@ -13,8 +13,6 @@ import uvicorn
 
 from video_handling.streaming import video_stream_generator, USE_LIVE_CAMERA
 
-TEMPERATURE: float = 0.01
-
 active_connections: list[WebSocket] = []
 
 app = FastAPI()
@@ -37,6 +35,7 @@ async def favicon():
 @app.websocket("/ws")
 async def websocket_endpoint(ws: WebSocket):
     prompt = ws.app.state.prompt
+    settings = ws.app.state.settings
 
     await ws.accept()
     active_connections.append(ws)
@@ -60,16 +59,25 @@ async def websocket_endpoint(ws: WebSocket):
 
                 else:
                     if temperature is not None:
-                        global TEMPERATURE
+                        settings.set_temperature(temperature)
+                        logger.info(f"Temperature set to: {settings.get_temperature():.2f}")
 
-                        TEMPERATURE = float(temperature)
-                        logger.info(f"Temperature set to: {TEMPERATURE:.2f}")
+                    resample_fps = msg.get("resample_fps", None)
+                    if resample_fps is not None:
+                        settings.set_resample_fps(resample_fps)
+                        logger.info(f"Resample fps set to: {settings.get_resample_fps()}")
 
                     if text:
                         prompt.set(text)
                         logger.info(f"Prompt updated to: {text}")
 
-                    echo_msg = {"role": "system", "text": f"Prompt changed to: {text}, Temperature: {TEMPERATURE:.2f}"}
+                    echo_msg = {
+                        "role": "system",
+                        "text": (
+                            f"Prompt changed to: {text}, Temperature: {settings.get_temperature():.2f}, "
+                            f"Resample: {settings.effective_resample_fps():.2f} fps"
+                        ),
+                    }
                     await ws.send_text(json.dumps(echo_msg))
 
             else:
@@ -157,9 +165,10 @@ async def broadcast(message: str):
             logger.warning("Tried to remove non-existent WebSocket.")
 
 
-def start_server_threaded(prompt=None):
+def start_server_threaded(prompt=None, settings=None):
 
     app.state.prompt = prompt
+    app.state.settings = settings
 
     t = threading.Thread(
         target=start_server,
