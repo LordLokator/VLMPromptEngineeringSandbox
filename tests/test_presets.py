@@ -42,4 +42,24 @@ def test_label_truncated_to_25_chars(user_file):
 
 def test_empty_input_rejected(user_file):
     res = TestClient(app).post("/save_preset", json={"label": " ", "text": "t"})
-    assert res.json()["status"] == "error"
+    assert res.status_code == 400 and res.json()["status"] == "error"
+
+
+def test_invalid_bodies_return_400(user_file):
+    c = TestClient(app)
+    assert c.post("/save_preset", json=["x"]).status_code == 400
+    assert c.post("/save_preset", json={"text": "t"}).status_code == 400
+    assert c.post("/save_preset", json={"label": "l", "text": "x" * 2001}).status_code == 400
+    assert c.post("/save_preset", json={"label": 5, "text": "t"}).status_code == 400
+    assert button_presets.load_user_presets() == []
+
+
+def test_concurrent_saves_stay_valid(user_file):
+    import threading
+
+    threads = [threading.Thread(target=button_presets.save_user_preset, args=(f"l{i}", "t")) for i in range(8)]
+    for t in threads:
+        t.start()
+    for t in threads:
+        t.join()
+    assert len(json.loads(user_file.read_text(encoding="utf-8"))) == 8

@@ -36,3 +36,14 @@ def test_concurrent_sets_keep_a_valid_value(prompt):
     for t in threads:
         t.join()
     assert prompt.get() in values
+
+
+def test_history_write_failure_keeps_prompt(prompt, monkeypatch):
+    import os
+
+    def boom(*_a, **_k):
+        raise OSError("disk full")
+
+    monkeypatch.setattr(os, "replace", boom)
+    prompt.set("still set")
+    assert prompt.get() == "still set"

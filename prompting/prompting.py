@@ -27,15 +27,18 @@ class Prompt:
                 return
 
             self._prompt = new_prompt
+            logger.info(f"New prompt: [ {new_prompt} ]")
 
-        logger.info(f"New prompt: [ {new_prompt} ]")
+            data = {
+                'prompt': new_prompt,
+                'time': get_formatted_time()
+            }
 
-        data = {
-            'prompt': new_prompt,
-            'time': get_formatted_time()
-        }
-
-        append_dict_to_json(file_path='./prompting/history.json', new_data=data)
+            # History is best-effort: a disk problem must not undo the prompt change.
+            try:
+                append_dict_to_json(file_path='./prompting/history.json', new_data=data)
+            except OSError as e:
+                logger.error(f"Could not write prompt history: {e}")
 
 
 class RuntimeSettings:

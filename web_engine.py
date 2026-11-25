@@ -1,20 +1,26 @@
 import asyncio
 from contextlib import asynccontextmanager
-import datetime
-import sys
 import json
+import os
+from urllib.parse import urlparse
 from fastapi import Request
 from utils.button_presets import load_presets, load_user_presets, save_user_preset
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect
-from fastapi.responses import HTMLResponse, StreamingResponse, FileResponse
+from fastapi.responses import JSONResponse, StreamingResponse, FileResponse
 from fastapi.staticfiles import StaticFiles
 from loguru import logger
 import threading
 import uvicorn
 
+from utils.file_management import BASE_DIR
 from video_handling.streaming import video_stream_generator, USE_LIVE_CAMERA
 
+HOST: str = os.environ.get("VLM_HOST", "127.0.0.1")
+PORT: int = int(os.environ.get("VLM_PORT", "8000"))
+IS_LOOPBACK: bool = HOST in ("127.0.0.1", "localhost", "::1")
+
 active_connections: list[WebSocket] = []
+
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -24,7 +30,9 @@ async def lifespan(app: FastAPI):
     app.state.loop = None
 
 
-app = FastAPI(lifespan=lifespan)
+# No auth: expose the interactive API docs only on loopback.
+_docs = {} if IS_LOOPBACK else {"docs_url": None, "redoc_url": None, "openapi_url": None}
+app = FastAPI(lifespan=lifespan, **_docs)
 
 # Serve static frontend
 app.mount("/src", StaticFiles(directory="src"), name="src")
@@ -33,7 +41,7 @@ app.mount("/presets", StaticFiles(directory="presets"), name="presets")
 
 @app.get("/")
 async def get():
-    return HTMLResponse(open("src/page.html").read())
+    return FileResponse(BASE_DIR / "src" / "page.html", media_type="text/html")
 
 
 @app.get("/favicon.ico")
@@ -71,6 +79,13 @@ def parse_client_message(raw: str) -> tuple[dict | None, str | None]:
 async def websocket_endpoint(ws: WebSocket):
     prompt = ws.app.state.prompt
     settings = ws.app.state.settings
+
+    # Browsers always send Origin; reject cross-site pages. Non-browser clients send none.
+    origin = ws.headers.get("origin")
+    if origin is not None and urlparse(origin).netloc != ws.headers.get("host"):
+        logger.warning(f"Rejected WebSocket from origin {origin!r}")
+        await ws.close(code=1008)
+        return
 
     await ws.accept()
     active_connections.append(ws)
@@ -139,16 +154,6 @@ def video_feed():
     )
 
 
-@app.get("/metadata")
-def metadata():
-    return {
-        "timestamp": datetime.datetime.now(),
-        "tokens/sec": 35.2,
-        "throughput": "12 fps",
-        "session_id": "abc123"
-    }
-
-
 @app.get("/preset_buttons")
 def get_presets():
     sys_presets = load_presets()
@@ -162,20 +167,36 @@ def get_presets():
 
 @app.post("/save_preset")
 async def post_preset(request: Request):
-    data = await request.json()
+    if not request.headers.get("content-type", "").startswith("application/json"):
+        return JSONResponse({"status": "error", "reason": "Content-Type must be application/json"}, status_code=415)
 
-    label = data.get("label", "").strip()[:25]
-    text = data.get("text", "").strip()
+    def bad(reason: str) -> JSONResponse:
+        return JSONResponse({"status": "error", "reason": reason}, status_code=400)
 
-    if label and text:
-        save_user_preset(label, text)
-        return {"status": "ok", "label": label}
+    try:
+        data = await request.json()
+    except ValueError:
+        return bad("Body must be valid JSON")
+    if not isinstance(data, dict):
+        return bad("Body must be a JSON object")
 
-    return {"status": "error", "reason": "Invalid input"}
+    label, text = data.get("label"), data.get("text")
+    if not isinstance(label, str) or not isinstance(text, str):
+        return bad("label and text must be strings")
+    label, text = label.strip()[:25], text.strip()
+    if not label or not text:
+        return bad("label and text must not be empty")
+    if len(text) > MAX_TEXT_CHARS:
+        return bad(f"text too long (max {MAX_TEXT_CHARS} characters)")
+
+    save_user_preset(label, text)
+    return {"status": "ok", "label": label}
 
 
 def start_server():
-    uvicorn.run("web_engine:app", host="0.0.0.0", port=8000, reload=False)
+    if not IS_LOOPBACK:
+        logger.warning(f"Binding to {HOST}: the server has no authentication, anyone on the network can use it.")
+    uvicorn.run("web_engine:app", host=HOST, port=PORT, reload=False)
 
 
 def broadcast_sync(msg: dict, timeout: float = 5.0) -> None:
@@ -215,16 +236,3 @@ def start_server_threaded(prompt=None, settings=None):
     )
     t.start()
 
-
-if __name__ == "__main__":
-    import sys
-    from loguru import logger
-
-    logger.remove()
-    logger.add(sys.stderr, level="DEBUG")
-    logger.info("Starting server on http://localhost:8000")
-
-    try:
-        start_server_threaded()
-    except KeyboardInterrupt:
-        logger.info("KeyboardInterrupt detected.")
