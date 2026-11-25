@@ -59,7 +59,6 @@ def test_forward_returns_str(fake_torch):
     assert output == "hello"
 
 
-@pytest.mark.xfail(strict=True, reason="F5")
 def test_preprocessing_error_is_surfaced(fake_torch):
     vlm = make_vlm(FakeProcessor(error=ValueError("bad clip")))
     with pytest.raises(ValueError, match="bad clip"):

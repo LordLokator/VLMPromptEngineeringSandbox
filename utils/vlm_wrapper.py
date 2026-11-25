@@ -50,22 +50,15 @@ class VLM:
     def _forward(self, conversation, temperature=0.01):
         import torch
 
-        try:
-
-            processed_inputs = self.processor(
-                conversation=conversation,
-                add_system_prompt=True,
-                add_generation_prompt=True,
-                return_tensors="pt"
-            )
-            inputs = {
-                k: v.to(DEVICE) if isinstance(v, torch.Tensor) else v for k, v in processed_inputs.items()
-            }
-        except KeyboardInterrupt as e:
-            logger.info("Keyboard Interrupt, shutting down...")
-            raise e
-        except Exception as e:
-            logger.error(f"Error occured on VLM input preprocess: {e}")
+        processed_inputs = self.processor(
+            conversation=conversation,
+            add_system_prompt=True,
+            add_generation_prompt=True,
+            return_tensors="pt"
+        )
+        inputs = {
+            k: v.to(DEVICE) if isinstance(v, torch.Tensor) else v for k, v in processed_inputs.items()
+        }
 
         if "pixel_values" in inputs:
             inputs["pixel_values"] = inputs["pixel_values"].to(torch.bfloat16)
