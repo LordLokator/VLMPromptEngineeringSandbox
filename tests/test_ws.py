@@ -33,7 +33,7 @@ def client(monkeypatch):
 def test_toggle_stream_echo(client):
     with client.websocket_connect("/ws") as ws:
         ws.send_text(json.dumps({"role": "user", "text": "toggle_stream"}))
-        assert ws.receive_json() == {"role": "system", "text": "Switched to: Live camera"}
+        assert ws.receive_json() == {"type": "system", "text": "Switched to: Live camera"}
     assert USE_LIVE_CAMERA["value"] is True
 
 
@@ -47,7 +47,7 @@ def test_prompt_change_echo(client):
 def test_malformed_frame_does_not_close_socket(client):
     with client.websocket_connect("/ws") as ws:
         ws.send_text("{not json")
-        assert ws.receive_json()["role"] == "error"
+        assert ws.receive_json()["type"] == "error"
         ws.send_text(json.dumps({"role": "user", "text": "still alive"}))
         assert "still alive" in ws.receive_json()["text"]
 
@@ -69,20 +69,20 @@ def test_resample_fps_echoes_effective_rate(client):
 def test_oversized_text_rejected(client):
     with client.websocket_connect("/ws") as ws:
         ws.send_text(json.dumps({"role": "user", "text": "x" * 2001}))
-        assert ws.receive_json()["role"] == "error"
+        assert ws.receive_json()["type"] == "error"
     assert client.stub.value is None
 
 
 def test_json_list_rejected(client):
     with client.websocket_connect("/ws") as ws:
         ws.send_text("[1, 2]")
-        assert ws.receive_json()["role"] == "error"
+        assert ws.receive_json()["type"] == "error"
 
 
 def test_bad_temperature_replies_error_and_keeps_socket(client):
     with client.websocket_connect("/ws") as ws:
         ws.send_text(json.dumps({"role": "user", "text": "a", "temperature": "abc"}))
-        assert ws.receive_json()["role"] == "error"
+        assert ws.receive_json()["type"] == "error"
         ws.send_text(json.dumps({"role": "user", "text": "b"}))
         assert "Prompt changed to: b" in ws.receive_json()["text"]
 

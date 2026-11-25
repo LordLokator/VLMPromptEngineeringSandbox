@@ -24,15 +24,15 @@ def run(vlm, temp=0.5, clip="c.mp4", fps=10):
 
 def test_ok_message():
     (msg,) = run(FakeVLM())
-    assert msg["status"] == "OK"
-    assert msg["output"] == "a car"
+    assert msg["type"] == "vlm"
+    assert msg["text"] == "a car"
     assert msg["delay"] >= 0
 
 
 def test_error_message():
     (msg,) = run(FakeVLM(fail=True))
-    assert msg["status"] == "ERROR"
-    assert "boom" in msg["msg"]
+    assert msg["type"] == "error"
+    assert "boom" in msg["text"]
 
 
 def test_temperature_getter_is_used():

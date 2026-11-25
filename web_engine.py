@@ -44,6 +44,11 @@ async def favicon():
 MAX_TEXT_CHARS = 2000
 
 
+def emit(kind: str, text: str, **extra: float) -> dict:
+    """Build a server -> client frame: {"type": "vlm"|"error"|"system", "text": str, ...}."""
+    return {"type": kind, "text": text, **extra}
+
+
 def parse_client_message(raw: str) -> tuple[dict | None, str | None]:
     """Return (message, None) for a valid client frame, else (None, error text)."""
     try:
@@ -76,7 +81,7 @@ async def websocket_endpoint(ws: WebSocket):
             msg, err = parse_client_message(raw)
             if msg is None:
                 logger.warning(f"Rejected client frame: {err}")
-                await ws.send_text(json.dumps({"role": "error", "text": err}))
+                await ws.send_text(json.dumps(emit("error", err)))
                 continue
             role = msg.get("role")
             text = msg.get("text", "")
@@ -88,7 +93,7 @@ async def websocket_endpoint(ws: WebSocket):
                 if text == "toggle_stream":
                     USE_LIVE_CAMERA["value"] = not USE_LIVE_CAMERA["value"]
                     new_mode = "Live camera" if USE_LIVE_CAMERA["value"] else "Static video"
-                    system_msg = {"role": "system", "text": f"Switched to: {new_mode}"}
+                    system_msg = emit("system", f"Switched to: {new_mode}")
                     await ws.send_text(json.dumps(system_msg))
 
                 else:
@@ -101,25 +106,23 @@ async def websocket_endpoint(ws: WebSocket):
                             settings.set_resample_fps(resample_fps)
                             logger.info(f"Resample fps set to: {settings.get_resample_fps()}")
                     except ValueError as e:
-                        await ws.send_text(json.dumps({"role": "error", "text": str(e)}))
+                        await ws.send_text(json.dumps(emit("error", str(e))))
                         continue
 
                     if text:
                         prompt.set(text)
                         logger.info(f"Prompt updated to: {text}")
 
-                    echo_msg = {
-                        "role": "system",
-                        "text": (
-                            f"Prompt changed to: {text}, Temperature: {settings.get_temperature():.2f}, "
-                            f"Resample: {settings.effective_resample_fps():.2f} fps"
-                        ),
-                    }
+                    echo_msg = emit(
+                        "system",
+                        f"Prompt changed to: {text}, Temperature: {settings.get_temperature():.2f}, "
+                        f"Resample: {settings.effective_resample_fps():.2f} fps",
+                    )
                     await ws.send_text(json.dumps(echo_msg))
 
             else:
                 logger.warning(f"Unhandled role: {role}")
-                await ws.send_text(json.dumps({"role": "system", "text": f"Unknown role: {role}"}))
+                await ws.send_text(json.dumps(emit("error", f"Unknown role: {role}")))
 
     except WebSocketDisconnect:
         logger.info("Client disconnected")
