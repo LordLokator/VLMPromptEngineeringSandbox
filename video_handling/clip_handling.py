@@ -43,6 +43,10 @@ class ClipRecorder:
                     logger.warning("Stream ended, restarting...")
                     stream = get_stream_source()
                     continue
+                except RuntimeError as e:
+                    logger.error(f"Capture source failed: {e}")
+                    self.running = False
+                    return
 
                 time.sleep(frame_interval)
 
