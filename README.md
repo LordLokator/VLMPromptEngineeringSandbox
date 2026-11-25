@@ -253,3 +253,8 @@ The goal was not to build another LLM chat interface, but to:
 - observe latency vs FPS trade-offs
 
 - create a controlled sandbox for VLM behavior
+
+
+## License
+
+MIT, see [LICENSE](LICENSE).
