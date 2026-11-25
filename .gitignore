@@ -176,3 +176,10 @@ cython_debug/
 
 # PyPI configuration file
 .pypirc
+
+# Runtime artifacts
+prompting/history.json
+tmp/
+VideoLLaMA3/
+logs/
+presets/user_presets.json
