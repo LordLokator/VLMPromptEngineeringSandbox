@@ -3,6 +3,8 @@ from contextlib import asynccontextmanager
 import datetime
 import sys
 import json
+import os
+from urllib.parse import urlparse
 from fastapi import Request
 from utils.button_presets import load_presets, load_user_presets, save_user_preset
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect
@@ -14,7 +16,12 @@ import uvicorn
 
 from video_handling.streaming import video_stream_generator, USE_LIVE_CAMERA
 
+HOST: str = os.environ.get("HOST", "127.0.0.1")
+PORT: int = int(os.environ.get("PORT", "8000"))
+IS_LOOPBACK: bool = HOST in ("127.0.0.1", "localhost", "::1")
+
 active_connections: list[WebSocket] = []
+
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -24,7 +31,9 @@ async def lifespan(app: FastAPI):
     app.state.loop = None
 
 
-app = FastAPI(lifespan=lifespan)
+# No auth: expose the interactive API docs only on loopback.
+_docs = {} if IS_LOOPBACK else {"docs_url": None, "redoc_url": None, "openapi_url": None}
+app = FastAPI(lifespan=lifespan, **_docs)
 
 # Serve static frontend
 app.mount("/src", StaticFiles(directory="src"), name="src")
@@ -71,6 +80,13 @@ def parse_client_message(raw: str) -> tuple[dict | None, str | None]:
 async def websocket_endpoint(ws: WebSocket):
     prompt = ws.app.state.prompt
     settings = ws.app.state.settings
+
+    # Browsers always send Origin; reject cross-site pages. Non-browser clients send none.
+    origin = ws.headers.get("origin")
+    if origin is not None and urlparse(origin).netloc != ws.headers.get("host"):
+        logger.warning(f"Rejected WebSocket from origin {origin!r}")
+        await ws.close(code=1008)
+        return
 
     await ws.accept()
     active_connections.append(ws)
@@ -162,6 +178,9 @@ def get_presets():
 
 @app.post("/save_preset")
 async def post_preset(request: Request):
+    if not request.headers.get("content-type", "").startswith("application/json"):
+        return JSONResponse({"status": "error", "reason": "Content-Type must be application/json"}, status_code=415)
+
     def bad(reason: str) -> JSONResponse:
         return JSONResponse({"status": "error", "reason": reason}, status_code=400)
 
@@ -186,7 +205,9 @@ async def post_preset(request: Request):
 
 
 def start_server():
-    uvicorn.run("web_engine:app", host="0.0.0.0", port=8000, reload=False)
+    if not IS_LOOPBACK:
+        logger.warning(f"Binding to {HOST}: the server has no authentication, anyone on the network can use it.")
+    uvicorn.run("web_engine:app", host=HOST, port=PORT, reload=False)
 
 
 def broadcast_sync(msg: dict, timeout: float = 5.0) -> None:
