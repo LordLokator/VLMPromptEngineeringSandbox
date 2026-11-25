@@ -11,19 +11,29 @@ const saveBtn = document.getElementById("savePresetBtn");
 const pastelColors = ["#FF6633", "#FFB399", "#FF33FF", "#FFFF99", "#00B3E6", "#E6B333", "#3366E6", "#999966", "#809980", "#E6FF80", "#1AFF33", "#999933", "#FF3380", "#CCCC00", "#66E64D", "#4D80CC", "#FF4D4D", "#99E6E6", "#6666FF"
 ];
 
+function handleServerMessage(data) {
+    // Accepted shapes: new {type: 'vlm'|'error'|'system', text, delay?},
+    // legacy {output, delay, status}, legacy {status: 'ERROR', msg}, legacy {role, text}.
+    const withDelay = (text, delay) =>
+        typeof delay === "number" ? `${text} (Δt: ${delay.toFixed(2)}s)` : text;
+
+    if (typeof data.type === "string" && "text" in data) {
+        addChatMessage(data.type, withDelay(data.text, data.delay));
+    } else if (data.status === "ERROR") {
+        addChatMessage("error", data.msg || "Unknown server error");
+    } else if (typeof data.output === "string") {
+        // An empty output is a valid (empty) VLM line.
+        addChatMessage("vlm", withDelay(data.output, data.delay));
+    } else if (data.role && data.text) {
+        addChatMessage(data.role, data.text);
+    } else {
+        console.warn("Unhandled message format:", data);
+    }
+}
+
 ws.onmessage = (event) => {
     try {
-        const data = JSON.parse(event.data);
-
-        if (data.output) {
-            const text = `${data.output} (Δt: ${data.delay.toFixed(2)}s)`;
-            addChatMessage("vlm", text);
-        } else if (data.role && data.text) {
-            addChatMessage(data.role, data.text);
-        } else {
-            console.warn("Unhandled message format:", data);
-        }
-
+        handleServerMessage(JSON.parse(event.data));
     } catch (err) {
         console.error("Failed to parse message:", err, event.data);
     }
@@ -53,7 +63,7 @@ function toggleStream() {
     const payload = { role: "user", text: "toggle_stream" };
     ws.send(JSON.stringify(payload));
 
-    addChatMessage("System", "Stream toggle requested");
+    addChatMessage("system", "Stream toggle requested");
 
     const img = document.getElementById("video");
     img.src = `/video_feed?ts=${Date.now()}`;
