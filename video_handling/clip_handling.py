@@ -28,12 +28,13 @@ class ClipRecorder:
 
     def _run(self):
         logger.info("ClipRecorder started.")
-        stream = get_stream_source()
+        stream = get_stream_source(paced=False)
 
         while self.running:
             frames = []
             target_frames = int(self.buffer_seconds * self.fps)
             frame_interval = 1 / self.fps
+            next_t = time.monotonic()
 
             for _ in range(target_frames):
                 try:
@@ -41,14 +42,16 @@ class ClipRecorder:
                     frames.append(frame.copy())
                 except StopIteration:
                     logger.warning("Stream ended, restarting...")
-                    stream = get_stream_source()
+                    stream = get_stream_source(paced=False)
                     continue
                 except RuntimeError as e:
                     logger.error(f"Capture source failed: {e}")
                     self.running = False
                     return
 
-                time.sleep(frame_interval)
+                # Pace once, by timestamp (the source itself is unpaced here).
+                next_t += frame_interval
+                time.sleep(max(0.0, next_t - time.monotonic()))
 
             filename = f"{self.out_dir}/clip_{self.counter:03d}.mp4"
             self.counter += 1

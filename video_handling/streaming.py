@@ -12,7 +12,7 @@ VIDEO_PATHS = [
 VIDEO_IDX = 0
 
 
-def static_video():
+def static_video(paced: bool = True):
     global VIDEO_IDX
 
     cap, fps, delay = _init_video_object(VIDEO_PATHS[VIDEO_IDX])
@@ -28,8 +28,9 @@ def static_video():
 
             start = time.time()
             yield frame
-            elapsed = time.time() - start
-            time.sleep(max(0, delay - elapsed))
+            if paced:
+                elapsed = time.time() - start
+                time.sleep(max(0, delay - elapsed))
     finally:
         cap.release()
 
@@ -68,8 +69,10 @@ def live_stream():
         cap.release()
 
 
-def get_stream_source():
-    return live_stream() if USE_LIVE_CAMERA['value'] else static_video()
+def get_stream_source(paced: bool = True):
+    """Pick the active source. `paced` only affects static video: the clip recorder
+    passes False because it paces frames itself; live_stream is paced by the camera."""
+    return live_stream() if USE_LIVE_CAMERA['value'] else static_video(paced=paced)
 
 
 def video_stream_generator():
