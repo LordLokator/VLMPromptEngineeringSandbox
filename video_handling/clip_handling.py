@@ -19,7 +19,7 @@ class ClipRecorder:
         self.out_dir = "./tmp"
         self.running = False
         self.counter = 0
-        self.flush_callback: Callable = lambda path: logger.debug(f"Clip flushed: {path}")  # default, replaced by caller
+        self.flush_callback: Callable = lambda path: logger.debug(f"Clip flushed: {path}")
 
         # Create './tmp' if it doesn't exists:
         os.makedirs(self.out_dir, exist_ok=True)
