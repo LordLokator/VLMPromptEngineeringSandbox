@@ -52,7 +52,6 @@ def test_get_conv_structure():
     assert text == {"type": "text", "text": "p"}
 
 
-@pytest.mark.xfail(strict=True, reason="F14")
 def test_forward_returns_str(fake_torch):
     vlm = make_vlm(FakeProcessor(decoded=["  hello "]))
     output, _ = vlm.forward("clip.mp4", 10, 20, temperature=0.1)
@@ -63,3 +62,9 @@ def test_preprocessing_error_is_surfaced(fake_torch):
     vlm = make_vlm(FakeProcessor(error=ValueError("bad clip")))
     with pytest.raises(ValueError, match="bad clip"):
         vlm.forward("clip.mp4", 10, 20)
+
+
+def test_forward_empty_decode_returns_empty_str(fake_torch):
+    vlm = make_vlm(FakeProcessor(decoded=[]))
+    output, _ = vlm.forward("clip.mp4", 10, 20)
+    assert output == ""

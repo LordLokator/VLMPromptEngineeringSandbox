@@ -35,7 +35,7 @@ class VLM:
         )
         logger.info("Instantiated models.")
 
-    def forward(self, video_path, fps, max_frames, temperature=0.01):
+    def forward(self, video_path, fps, max_frames, temperature=0.01) -> tuple[str, float]:
         current_prompt = self.prompt_obj.get()
 
         conversation = self.get_conv(
@@ -47,7 +47,7 @@ class VLM:
         output = self._forward(conversation, temperature)
         return (output, temperature)
 
-    def _forward(self, conversation, temperature=0.01):
+    def _forward(self, conversation, temperature=0.01) -> str:
         import torch
 
         processed_inputs = self.processor(
@@ -69,12 +69,14 @@ class VLM:
             max_new_tokens=MAX_NEW_TOKENS,
             temperature=temperature,
         )
-        raw_output: str = self.processor.batch_decode(
+        decoded: list[str] = self.processor.batch_decode(
             output_ids,
             skip_special_tokens=True
         )
-
-        return raw_output
+        if not decoded:
+            logger.warning("VLM returned no decoded output.")
+            return ""
+        return decoded[0].strip()
 
     def get_conv(self, video_path, fps, max_frames, prompt):
         return [
