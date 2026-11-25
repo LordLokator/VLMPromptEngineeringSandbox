@@ -1,5 +1,7 @@
 # Video Prompt Sandbox
 
+[![ci](https://github.com/LordLokator/VLMPromptEngineeringSandbox/actions/workflows/ci.yml/badge.svg)](https://github.com/LordLokator/VLMPromptEngineeringSandbox/actions/workflows/ci.yml)
+
 Interactive Video-Language Model (VLM) Playground with Live Prompt Editing
 
 ----
@@ -28,25 +30,27 @@ Tested on Ubuntu + RTX 4090.
 
 ## Features
 
-- 🎥 Webcam or static video input (OpenCV)
+- Webcam or static video input (OpenCV)
 
-- ⏱ Rolling clip buffer (few-second segments)
+- Rolling clip buffer (few-second segments)
 
-- 🧠 VLM inference via DAMO-NLP-SG/VideoLLaMA3-7B
+- VLM inference via DAMO-NLP-SG/VideoLLaMA3-7B
 
-- 🌡 Adjustable temperature (UI-controlled)
+- Adjustable temperature (UI-controlled)
 
-- 🎞 Adjustable resample FPS (UI-controlled; snapped to the rate the processor really uses)
+- Adjustable resample FPS (UI-controlled, 1-10; snapped to the rate the processor really uses)
 
-- 🧵 Thread-safe prompt updates
+- Thread-safe prompt updates
 
-- 💾 Persistent user presets
+- Persistent user presets
 
-- 🗂 Prompt history logging with timestamps
+- Prompt history logging with timestamps
 
-- 🌐 Live video streaming to browser
+- Live video streaming to browser
 
-- 📜 Rich structured logging (Loguru)
+- Browser UI reconnects automatically (backoff 1 s to 10 s) and shows server errors as chat messages
+
+- Rich structured logging (Loguru)
 
 ----
 
@@ -100,7 +104,7 @@ Model: DAMO-NLP-SG/VideoLLaMA3-7B
 
 LLM Framework: HuggingFace Transformers
 
-Attention: FlashAttention2
+Attention: FlashAttention2 (default, override with `VLM_ATTN_IMPL`)
 
 Precision: bfloat16
 
@@ -134,7 +138,7 @@ Device: cuda:0
 
 ## Quick Setup
 
-Python 3.11 is required (the pinned `numpy==1.24.4` has no wheels for Python 3.12 or newer).
+Python 3.11 is expected (inferred from the `numpy==1.24.4` pin, which has no wheels for Python 3.12 or newer; not tested on other versions). The setup script does not clone VideoLLaMA3; the model is loaded from Hugging Face at a pinned revision.
 
 ```
 git clone https://github.com/LordLokator/VLMPromptEngineeringSandbox VLMDemo
@@ -149,6 +153,16 @@ Then open:
 ```
 http://localhost:8000/
 ```
+
+Environment variables (all optional):
+
+| Variable | Default | Meaning |
+|---|---|---|
+| `VLM_HOST` | `127.0.0.1` | Bind address. Anything non-loopback logs a warning (no authentication) and disables the API docs. |
+| `VLM_PORT` | `8000` | Port. |
+| `VLM_ATTN_IMPL` | `flash_attention_2` | Attention implementation passed to the model. Other values are untested. |
+
+The WebSocket rejects cross-site browser origins. There is no authentication, so keep it on localhost.
 
 ----
 
@@ -165,14 +179,16 @@ http://localhost:8000/
         Save as Preset (disabled if empty)
         
         Temperature slider
+        
+        Resample FPS slider
 
     Right panel:
     
-        🟢 VLM outputs
+        VLM outputs
         
-        🔵 User messages
+        User messages
         
-        ⚫ System acknowledgments
+        System acknowledgments and server errors
 
 Presets stored in:
 
@@ -185,6 +201,20 @@ Prompt history stored in:
 ```
 ./prompting/history.json
 ```
+
+----
+
+## Development
+
+No GPU needed; the model code is isolated in `utils/vlm_wrapper.py` and mocked in tests.
+
+```
+pip install -r requirements-dev.txt
+pytest -q
+ruff check .
+```
+
+CI (`.github/workflows/ci.yml`) runs lint, compile check and tests on Python 3.11 and 3.12, plus a dependency-resolution check.
 
 ----
 
