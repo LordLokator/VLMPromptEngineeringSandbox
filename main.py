@@ -126,7 +126,7 @@ def main():
 
     on_clip_flush = make_clip_handler(process, executor, threading.Lock())
 
-    recorder.start(flush_callback=on_clip_flush)
+    recorder.start(flush_callback=on_clip_flush, on_error=lambda text: broadcast_sync(emit("error", text)))
 
     try:
         while True:
