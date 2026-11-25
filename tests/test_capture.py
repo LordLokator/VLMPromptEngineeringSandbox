@@ -87,7 +87,7 @@ def _instant_stream():
 def test_recorder_paces_once_by_timestamp(monkeypatch, tmp_path):
     seen = {"paced": []}
 
-    def fake_source(paced: bool = True):
+    def fake_source(paced: bool = True, sample_fps=None):
         seen["paced"].append(paced)
         return _instant_stream()
 
@@ -99,7 +99,6 @@ def test_recorder_paces_once_by_timestamp(monkeypatch, tmp_path):
 
     monkeypatch.setattr(clip_handling, "get_stream_source", fake_source)
     monkeypatch.setattr(clip_handling, "write_video", fake_write)
-    monkeypatch.setattr(clip_handling, "BASE_DIR", tmp_path)
     rec = ClipRecorder(buffer_seconds=0.3, fps=10)
     rec.out_dir = str(tmp_path)
     done = threading.Event()
@@ -147,7 +146,7 @@ def test_toggle_reopens_stream_once_at_clip_boundary(monkeypatch, tmp_path):
         finally:
             closed.append(len(opened))
 
-    def fake_source(paced: bool = True):
+    def fake_source(paced: bool = True, sample_fps=None):
         opened.append(flag["value"])
         return make_stream(flag["value"])
 
@@ -186,3 +185,119 @@ def test_static_video_rotates_and_wraps_around(monkeypatch, tmp_path):
         next(gen)
     gen.close()
     assert streaming.VIDEO_IDX == 0  # a -> b -> a
+
+
+class CountingCap:
+    """30 fps fake source: frame i is the integer i, 90 frames (3 s) per pass."""
+
+    def __init__(self, _src):
+        self.i = 0
+
+    def isOpened(self):
+        return True
+
+    def read(self):
+        if self.i >= 90:
+            return False, None
+        self.i += 1
+        return True, self.i - 1
+
+    def get(self, _prop):
+        return 30.0
+
+    def release(self):
+        pass
+
+
+def test_sampling_follows_source_timestamps(monkeypatch):
+    monkeypatch.setattr(streaming.cv2, "VideoCapture", CountingCap)
+    monkeypatch.setattr(streaming, "VIDEO_IDX", 0)
+    gen = streaming.static_video(paced=False, sample_fps=10)
+    got = [next(gen) for _ in range(30)]
+    gen.close()
+    assert got == list(range(0, 90, 3))  # 30 frames spanning 3 s of source time
+
+
+def _recorder(monkeypatch, tmp_path, source, fps=10, seconds=0.3):
+    monkeypatch.setattr(clip_handling, "get_stream_source", source)
+    monkeypatch.setattr(clip_handling, "write_video", lambda frames, path, fps=60: None)
+    rec = ClipRecorder(buffer_seconds=seconds, fps=fps)
+    rec.out_dir = str(tmp_path)
+    return rec
+
+
+def test_stop_iteration_does_not_shorten_clips(monkeypatch, tmp_path):
+    frame = np.zeros((8, 8, 3), dtype=np.uint8)
+    calls = {"n": 0}
+
+    def source(paced=True, sample_fps=None):
+        calls["n"] += 1
+
+        def gen():
+            if calls["n"] == 1:
+                yield frame  # first stream ends after one frame
+                return
+            while True:
+                yield frame
+        return gen()
+
+    sizes = []
+    rec = _recorder(monkeypatch, tmp_path, source)
+    monkeypatch.setattr(clip_handling, "write_video", lambda frames, path, fps=60: sizes.append(len(frames)))
+    done = threading.Event()
+    rec.start(lambda _p: done.set())
+    assert done.wait(5)
+    rec.stop()
+    assert sizes[0] == 3
+
+
+def test_stop_joins_thread_and_closes_stream(monkeypatch, tmp_path):
+    closed = threading.Event()
+
+    def source(paced=True, sample_fps=None):
+        def gen():
+            frame = np.zeros((8, 8, 3), dtype=np.uint8)
+            try:
+                while True:
+                    yield frame
+            finally:
+                closed.set()
+        return gen()
+
+    rec = _recorder(monkeypatch, tmp_path, source, seconds=5)
+    rec.start()
+    time.sleep(0.2)
+    t0 = time.monotonic()
+    rec.stop()
+    assert time.monotonic() - t0 < 2
+    assert not rec._thread.is_alive()
+    assert closed.is_set()
+
+
+def test_open_failure_calls_on_error_once(monkeypatch, tmp_path):
+    monkeypatch.setattr(streaming, "VIDEO_PATHS", [str(tmp_path / "missing.mp4")])
+    monkeypatch.setattr(streaming, "VIDEO_IDX", 0)
+    monkeypatch.setitem(clip_handling.USE_LIVE_CAMERA, "value", False)
+    monkeypatch.setattr(clip_handling, "write_video", lambda frames, path, fps=60: None)
+    errors = []
+    rec = ClipRecorder(buffer_seconds=0.3, fps=10)
+    rec.out_dir = str(tmp_path)
+    rec.start(on_error=errors.append)
+    rec._thread.join(5)
+    assert len(errors) == 1 and "Failed to open" in errors[0]
+
+
+def test_video_feed_ends_cleanly_on_open_failure(monkeypatch, tmp_path):
+    monkeypatch.setattr(streaming, "VIDEO_PATHS", [str(tmp_path / "missing.mp4")])
+    monkeypatch.setattr(streaming, "VIDEO_IDX", 0)
+    monkeypatch.setitem(streaming.USE_LIVE_CAMERA, "value", False)
+    assert list(streaming.video_stream_generator()) == []
+
+
+def test_makedir_nested_and_idempotent(tmp_path):
+    from utils.file_management import makedir
+
+    target = str(tmp_path / "a" / "b")
+    makedir(target)
+    makedir(target)
+    assert Path(target).is_dir()

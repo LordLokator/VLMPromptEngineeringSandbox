@@ -3,13 +3,14 @@ import threading
 
 import pytest
 
+from prompting import prompting
 from prompting.prompting import Prompt
 
 
 @pytest.fixture
 def prompt(tmp_path, monkeypatch):
     monkeypatch.chdir(tmp_path)
-    (tmp_path / "prompting").mkdir()
+    monkeypatch.setattr(prompting, "HISTORY_FILE", tmp_path / "prompting" / "history.json")
     return Prompt()
 
 

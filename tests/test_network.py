@@ -1,3 +1,4 @@
+from pathlib import Path
 import json
 
 import pytest
@@ -44,3 +45,20 @@ def test_index_served_and_metadata_removed(client):
     res = client.get("/")
     assert res.status_code == 200 and res.headers["content-type"].startswith("text/html")
     assert client.get("/metadata").status_code == 404
+
+
+def test_paths_do_not_depend_on_cwd(monkeypatch, tmp_path):
+    monkeypatch.chdir(tmp_path)
+    c = TestClient(web_engine.app)
+    assert c.get("/").status_code == 200
+    assert c.get("/preset_buttons").status_code == 200
+    assert c.get("/src/script.js").status_code == 200
+    from prompting import prompting
+    from utils.button_presets import USER_PRESETS_FILE
+    assert prompting.HISTORY_FILE.is_absolute() and USER_PRESETS_FILE.is_absolute()
+
+
+def test_static_mounts_are_absolute():
+    mounts = {r.path: r.app.directory for r in web_engine.app.routes if r.path in ("/src", "/presets")}
+    assert set(mounts) == {"/src", "/presets"}
+    assert all(Path(d).is_absolute() for d in mounts.values())

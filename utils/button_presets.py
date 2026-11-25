@@ -1,13 +1,13 @@
 # button_presets.py
 import json
 import threading
-from pathlib import Path
 from loguru import logger
 
+from utils.file_management import BASE_DIR
 from utils.json_management import write_json_atomic
 
-PRESETS_FILE = Path("presets/button_presets.json")
-USER_PRESETS_FILE = Path("presets/user_presets.json")
+PRESETS_FILE = BASE_DIR / "presets" / "button_presets.json"
+USER_PRESETS_FILE = BASE_DIR / "presets" / "user_presets.json"
 _save_lock = threading.Lock()
 
 

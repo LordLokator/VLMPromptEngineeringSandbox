@@ -35,8 +35,8 @@ _docs = {} if IS_LOOPBACK else {"docs_url": None, "redoc_url": None, "openapi_ur
 app = FastAPI(lifespan=lifespan, **_docs)
 
 # Serve static frontend
-app.mount("/src", StaticFiles(directory="src"), name="src")
-app.mount("/presets", StaticFiles(directory="presets"), name="presets")
+app.mount("/src", StaticFiles(directory=BASE_DIR / "src"), name="src")
+app.mount("/presets", StaticFiles(directory=BASE_DIR / "presets"), name="presets")
 
 
 @app.get("/")
@@ -46,7 +46,7 @@ async def get():
 
 @app.get("/favicon.ico")
 async def favicon():
-    return FileResponse("src/favicon.ico", media_type="image/x-icon")
+    return FileResponse(BASE_DIR / "src" / "favicon.ico", media_type="image/x-icon")
 
 
 MAX_TEXT_CHARS = 2000
@@ -193,10 +193,10 @@ async def post_preset(request: Request):
     return {"status": "ok", "label": label}
 
 
-def start_server():
+def make_server() -> uvicorn.Server:
     if not IS_LOOPBACK:
         logger.warning(f"Binding to {HOST}: the server has no authentication, anyone on the network can use it.")
-    uvicorn.run("web_engine:app", host=HOST, port=PORT, reload=False)
+    return uvicorn.Server(uvicorn.Config("web_engine:app", host=HOST, port=PORT, reload=False))
 
 
 def broadcast_sync(msg: dict, timeout: float = 5.0) -> None:
@@ -225,14 +225,13 @@ async def broadcast(message: dict) -> None:
                 active_connections.remove(ws)
 
 
-def start_server_threaded(prompt=None, settings=None):
+def start_server_threaded(prompt=None, settings=None) -> uvicorn.Server:
+    """Run uvicorn in a daemon thread; set `.should_exit = True` on the returned server to stop it."""
 
     app.state.prompt = prompt
     app.state.settings = settings
 
-    t = threading.Thread(
-        target=start_server,
-        daemon=True
-    )
-    t.start()
+    server = make_server()
+    threading.Thread(target=server.run, daemon=True).start()
+    return server
 

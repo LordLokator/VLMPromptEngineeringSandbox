@@ -6,7 +6,10 @@ import time
 
 from loguru import logger
 
+from utils.file_management import BASE_DIR
 from utils.json_management import append_dict_to_json
+
+HISTORY_FILE = BASE_DIR / "prompting" / "history.json"  # tests patch this
 
 
 class Prompt:
@@ -36,7 +39,7 @@ class Prompt:
 
             # History is best-effort: a disk problem must not undo the prompt change.
             try:
-                append_dict_to_json(file_path='./prompting/history.json', new_data=data)
+                append_dict_to_json(file_path=str(HISTORY_FILE), new_data=data)
             except OSError as e:
                 logger.error(f"Could not write prompt history: {e}")
 

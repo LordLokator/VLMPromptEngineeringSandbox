@@ -90,3 +90,50 @@ def test_busy_clip_is_dropped_and_deleted(tmp_path):
     assert finished.acquire(timeout=5)
     executor.shutdown(wait=True)
     assert calls == [str(a), str(c)]
+
+
+def test_shutdown_order_and_speed():
+    import time
+
+    from main import shutdown
+
+    order = []
+
+    class Rec:
+        def stop(self):
+            order.append("recorder")
+
+    class Exe:
+        def shutdown(self, wait, cancel_futures):
+            order.append("executor")
+
+    class Srv:
+        should_exit = False
+
+    srv = Srv()
+    t0 = time.monotonic()
+    shutdown(Rec(), Exe(), srv, threading.Lock())
+    assert order == ["recorder", "executor"]
+    assert srv.should_exit is True
+    assert time.monotonic() - t0 < 2
+
+
+def test_shutdown_gives_up_on_stuck_inference():
+    from main import shutdown
+
+    busy = threading.Lock()
+    busy.acquire()
+
+    class Noop:
+        def stop(self):
+            pass
+
+        def shutdown(self, wait, cancel_futures):
+            pass
+
+    class Srv:
+        should_exit = False
+
+    srv = Srv()
+    shutdown(Noop(), Noop(), srv, busy, timeout=0.1)
+    assert srv.should_exit is True

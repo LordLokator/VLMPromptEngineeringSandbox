@@ -13,10 +13,17 @@ VIDEO_PATHS = [
 VIDEO_IDX = 0
 
 
-def static_video(paced: bool = True):
+def static_video(paced: bool = True, sample_fps: float | None = None):
+    """Yield frames of the sample clips, looping forever.
+
+    sample_fps: if set, keep one frame per 1/sample_fps seconds of *source* time (frame index / source fps),
+    so a 30 fps clip sampled at 10 fps still plays at real-time speed when consumed at 10 fps.
+    """
     global VIDEO_IDX
 
     cap, fps, delay = _init_video_object(VIDEO_PATHS[VIDEO_IDX])
+    frame_idx = 0
+    next_sample_t = 0.0
 
     try:
         while True:
@@ -25,7 +32,16 @@ def static_video(paced: bool = True):
                 cap.release()
                 VIDEO_IDX = (VIDEO_IDX + 1) % len(VIDEO_PATHS)
                 cap, fps, delay = _init_video_object(VIDEO_PATHS[VIDEO_IDX])
+                frame_idx = 0
+                next_sample_t = 0.0
                 continue
+
+            if sample_fps:
+                t = frame_idx / fps
+                frame_idx += 1
+                if t + 1e-9 < next_sample_t:
+                    continue
+                next_sample_t += 1 / sample_fps
 
             start = time.time()
             yield frame
@@ -70,10 +86,10 @@ def live_stream():
         cap.release()
 
 
-def get_stream_source(paced: bool = True):
-    """Pick the active source. `paced` only affects static video: the clip recorder
-    passes False because it paces frames itself; live_stream is paced by the camera."""
-    return live_stream() if USE_LIVE_CAMERA['value'] else static_video(paced=paced)
+def get_stream_source(paced: bool = True, sample_fps: float | None = None):
+    """Pick the active source. `paced` and `sample_fps` only affect static video: the clip recorder
+    passes paced=False and its own fps because it paces frames itself; live_stream is paced by the camera."""
+    return live_stream() if USE_LIVE_CAMERA['value'] else static_video(paced=paced, sample_fps=sample_fps)
 
 
 def video_stream_generator():
@@ -82,12 +98,17 @@ def video_stream_generator():
 
     if stream is None:
         return
-    for frame in stream:
-        # Check if mode changed mid-stream
-        if USE_LIVE_CAMERA["value"] != current_mode:
-            logger.info("Stream mode changed — switching generator")
-            return  # Kill generator
+    try:
+        for frame in stream:
+            # Check if mode changed mid-stream
+            if USE_LIVE_CAMERA["value"] != current_mode:
+                logger.info("Stream mode changed — switching generator")
+                return  # Kill generator
 
-        _, jpeg = cv2.imencode('.jpg', frame)
-        yield (b'--frame\r\n'
-               b'Content-Type: image/jpeg\r\n\r\n' + jpeg.tobytes() + b'\r\n')
+            _, jpeg = cv2.imencode('.jpg', frame)
+            yield (b'--frame\r\n'
+                   b'Content-Type: image/jpeg\r\n\r\n' + jpeg.tobytes() + b'\r\n')
+    except RuntimeError as e:
+        logger.error(f"Video feed ended: {e}")
+    finally:
+        stream.close()
