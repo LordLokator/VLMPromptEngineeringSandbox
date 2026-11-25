@@ -8,6 +8,7 @@ FALLBACK_IMAGE = str(BASE_DIR / "src" / "error.jpeg")
 USE_LIVE_CAMERA = {'value': False}
 VIDEO_PATHS = [
     str(BASE_DIR / "static_video" / "street_view_1.mp4"),
+    str(BASE_DIR / "static_video" / "street_view_2.mp4"),
 ]
 VIDEO_IDX = 0
 

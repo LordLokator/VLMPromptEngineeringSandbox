@@ -173,3 +173,16 @@ def test_toggle_reopens_stream_once_at_clip_boundary(monkeypatch, tmp_path):
     rec.running = False
     assert opened == [False, True]
     assert closed[0] == 1  # old stream closed before the new one was opened
+
+
+def test_static_video_rotates_and_wraps_around(monkeypatch, tmp_path):
+    a, b = tmp_path / "a.mp4", tmp_path / "b.mp4"
+    _write_tiny_mp4(a, 3)
+    _write_tiny_mp4(b, 3)
+    monkeypatch.setattr(streaming, "VIDEO_PATHS", [str(a), str(b)])
+    monkeypatch.setattr(streaming, "VIDEO_IDX", 0)
+    gen = streaming.static_video(paced=False)
+    for _ in range(8):  # more than 2 clips' worth of frames
+        next(gen)
+    gen.close()
+    assert streaming.VIDEO_IDX == 0  # a -> b -> a
