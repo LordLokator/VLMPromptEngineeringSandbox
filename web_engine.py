@@ -2,7 +2,6 @@ import asyncio
 import datetime
 import sys
 import json
-from types import NoneType
 from fastapi import Request
 from utils.button_presets import load_presets, load_user_presets, save_user_preset
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect
@@ -46,10 +45,9 @@ async def websocket_endpoint(ws: WebSocket):
         while True:
             raw = await ws.receive_text()
             msg: dict[str, str] = json.loads(raw)
-            logger.debug(f"Recieved msg: [ {msg} ]")
-
             role = msg.get("role")
             text = msg.get("text", "")
+            logger.debug(f"Received msg: role={role!r} text={text[:80]!r}")
             temperature = msg.get("temperature", None)
 
             # Handle user commands

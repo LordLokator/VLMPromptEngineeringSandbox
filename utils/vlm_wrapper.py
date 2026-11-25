@@ -57,7 +57,7 @@ class VLM:
                 k: v.to(DEVICE) if isinstance(v, torch.Tensor) else v for k, v in processed_inputs.items()
             }
         except KeyboardInterrupt as e:
-            logger.info(f"Keyboard Interrupt, shutting down...")
+            logger.info("Keyboard Interrupt, shutting down...")
             raise e
         except Exception as e:
             logger.error(f"Error occured on VLM input preprocess: {e}")
