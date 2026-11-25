@@ -4,6 +4,7 @@ import pytest
 from fastapi.testclient import TestClient
 
 import web_engine
+from prompting.prompting import RuntimeSettings
 from video_handling.streaming import USE_LIVE_CAMERA
 
 
@@ -20,10 +21,12 @@ def client(monkeypatch):
     stub = StubPrompt()
     monkeypatch.setattr(web_engine.app.state, "prompt", stub, raising=False)
     monkeypatch.setitem(USE_LIVE_CAMERA, "value", False)
-    monkeypatch.setattr(web_engine, "TEMPERATURE", 0.01)
+    settings = RuntimeSettings()
+    monkeypatch.setattr(web_engine.app.state, "settings", settings, raising=False)
     web_engine.active_connections.clear()
     client = TestClient(web_engine.app)
     client.stub = stub
+    client.settings = settings
     return client
 
 
@@ -47,3 +50,17 @@ def test_malformed_frame_does_not_close_socket(client):
         ws.send_text("{not json")
         ws.send_text(json.dumps({"role": "user", "text": "still alive"}))
         assert "still alive" in ws.receive_json()["text"]
+
+
+def test_temperature_reaches_settings(client):
+    with client.websocket_connect("/ws") as ws:
+        ws.send_text(json.dumps({"role": "user", "text": "hi", "temperature": 0.7}))
+        assert "Temperature: 0.70" in ws.receive_json()["text"]
+    assert client.settings.get_temperature() == 0.7
+
+
+def test_resample_fps_echoes_effective_rate(client):
+    with client.websocket_connect("/ws") as ws:
+        ws.send_text(json.dumps({"role": "user", "text": "hi", "resample_fps": 3}))
+        assert "Resample: 3.33 fps" in ws.receive_json()["text"]
+    assert client.settings.get_resample_fps() == 3

@@ -1,15 +1,17 @@
 # main.py
 import sys
+import threading
 import time
 import timeit
 from functools import partial
+from pathlib import Path
 from typing import Callable, Protocol
 from loguru import logger
 from concurrent.futures import ThreadPoolExecutor
 
-from prompting.prompting import Prompt
+from prompting.prompting import Prompt, RuntimeSettings
 from utils.vlm_wrapper import VLM
-from web_engine import start_server_threaded, broadcast_sync, TEMPERATURE
+from web_engine import start_server_threaded, broadcast_sync
 from video_handling.clip_handling import ClipRecorder
 
 logger.remove()
@@ -30,7 +32,7 @@ def process_clip(
     broadcast: Callable[[dict], None],
     *,
     get_temperature: Callable[[], float],
-    fps: int,
+    get_fps: Callable[[], int],
     max_frames: int,
 ) -> None:
     try:
@@ -38,7 +40,7 @@ def process_clip(
 
         output, _temperature = vlm.forward(
             video_path=clip_path,
-            fps=fps,
+            fps=get_fps(),
             max_frames=max_frames,
             temperature=get_temperature()
         )
@@ -65,15 +67,52 @@ def process_clip(
         }
         broadcast(msg)
 
+    finally:
+        # README promises clips are deleted after inference.
+        Path(clip_path).unlink(missing_ok=True)
+
+
+def make_clip_handler(
+    process: Callable[[str], None],
+    executor: ThreadPoolExecutor,
+    busy: threading.Lock,
+) -> Callable[[str], None]:
+    """Return a flush callback that drops (and deletes) clips while inference is in flight."""
+    dropped = 0
+
+    def run(clip_path: str) -> None:
+        try:
+            process(clip_path)
+        finally:
+            busy.release()
+
+    def on_clip_flush(clip_path: str) -> None:
+        nonlocal dropped
+        if not busy.acquire(blocking=False):
+            dropped += 1
+            logger.warning(f"Inference busy, dropping clip (dropped so far: {dropped}): {clip_path}")
+            Path(clip_path).unlink(missing_ok=True)
+            return
+        logger.info(f"Clip flushed: {clip_path}")
+        try:
+            executor.submit(run, clip_path)
+        except RuntimeError:
+            # Executor already shut down.
+            busy.release()
+            Path(clip_path).unlink(missing_ok=True)
+
+    return on_clip_flush
+
 
 def main():
     logger.info("Main app initialization...")
 
     # Create shared Prompt object
     prompt = Prompt()
+    settings = RuntimeSettings(clip_fps=FPS)
 
     # Start server in separate thread
-    start_server_threaded(prompt)
+    start_server_threaded(prompt, settings)
 
     # Create Video stream
     recorder = ClipRecorder(
@@ -89,15 +128,12 @@ def main():
         process_clip,
         vlm=vlm,
         broadcast=broadcast_sync,
-        # Read at call time; note TEMPERATURE itself is bound at import (known bug, fixed in T31).
-        get_temperature=lambda: TEMPERATURE,
-        fps=FPS,
+        get_temperature=settings.get_temperature,
+        get_fps=settings.get_resample_fps,
         max_frames=MAX_FRAMES,
     )
 
-    def on_clip_flush(clip_path: str):
-        logger.info(f"Clip flushed: {clip_path}")
-        executor.submit(process, clip_path)
+    on_clip_flush = make_clip_handler(process, executor, threading.Lock())
 
     recorder.start(flush_callback=on_clip_flush)
 
