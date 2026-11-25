@@ -1,8 +1,9 @@
-from transformers import AutoModelForCausalLM, AutoProcessor
-from VideoLLaMA3.inference.transformers_api.modeling_videollama3 import Videollama3Qwen2ForCausalLM
-from VideoLLaMA3.inference.transformers_api.processing_videollama3 import Videollama3Qwen2Processor
+"""All GPU/model code lives here (AGENTS rule 4).
 
-import torch
+Heavy imports are lazy so everything else is testable without torch.
+"""
+from typing import Any
+
 from loguru import logger
 
 from prompting.prompting import Prompt
@@ -14,10 +15,13 @@ DEVICE = "cuda:0"
 
 class VLM:
     def __init__(self, prompt: Prompt):
+        import torch
+        from transformers import AutoModelForCausalLM, AutoProcessor
+
         self.sys_prompt = "You are a helpful assistant."
         self.prompt_obj = prompt
 
-        self.model: Videollama3Qwen2ForCausalLM = AutoModelForCausalLM.from_pretrained(
+        self.model: Any = AutoModelForCausalLM.from_pretrained(
             MODEL_PATH,
             trust_remote_code=True,
             device_map={"": DEVICE},
@@ -25,7 +29,7 @@ class VLM:
             attn_implementation="flash_attention_2"
         )
 
-        self.processor: Videollama3Qwen2Processor = AutoProcessor.from_pretrained(
+        self.processor: Any = AutoProcessor.from_pretrained(
             MODEL_PATH,
             trust_remote_code=True
         )
@@ -44,6 +48,7 @@ class VLM:
         return (output, temperature)
 
     def _forward(self, conversation, temperature=0.01):
+        import torch
 
         try:
 
