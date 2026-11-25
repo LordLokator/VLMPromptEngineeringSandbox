@@ -14,9 +14,13 @@ def test_no_interpolated_innerhtml():
 
 def test_message_handler_covers_all_shapes():
     src = SCRIPT.read_text(encoding="utf-8")
-    assert "status === \"ERROR\"" in src
     assert "data.type" in src
-    assert "typeof data.output === \"string\"" in src
+    assert "status === \"ERROR\"" not in src, "legacy shapes are gone"
+    assert "data.output" not in src
+    assert src.count("let reconnectTimer") == 1 and "clearTimeout(reconnectTimer)" in src
+    onerror = src[src.index("ws.onerror"):src.index("ws.onclose")]
+    assert "addChatMessage" not in onerror
+    assert src.count("const presetBar") == 1
     assert "addChatMessage(\"System\"" not in src
 
 

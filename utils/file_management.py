@@ -38,5 +38,5 @@ def delete_files(files: list[str]):
         try:
             os.remove(file)
             logger.debug(f"Deleted {file}.")
-        except Exception as e:
+        except OSError as e:
             logger.error(f"Error deleting {file}: {e}")

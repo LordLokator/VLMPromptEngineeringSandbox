@@ -1,4 +1,5 @@
 import asyncio
+from contextlib import asynccontextmanager
 import datetime
 import sys
 import json
@@ -15,7 +16,15 @@ from video_handling.streaming import video_stream_generator, USE_LIVE_CAMERA
 
 active_connections: list[WebSocket] = []
 
-app = FastAPI()
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    # Worker threads hand broadcasts to this loop (see broadcast_sync).
+    app.state.loop = asyncio.get_running_loop()
+    yield
+    app.state.loop = None
+
+
+app = FastAPI(lifespan=lifespan)
 
 # Serve static frontend
 app.mount("/src", StaticFiles(directory="src"), name="src")
@@ -32,6 +41,32 @@ async def favicon():
     return FileResponse("src/favicon.ico", media_type="image/x-icon")
 
 
+MAX_TEXT_CHARS = 2000
+
+
+def emit(kind: str, text: str, **extra: float) -> dict:
+    """Build a server -> client frame: {"type": "vlm"|"error"|"system", "text": str, ...}."""
+    return {"type": kind, "text": text, **extra}
+
+
+def parse_client_message(raw: str) -> tuple[dict | None, str | None]:
+    """Return (message, None) for a valid client frame, else (None, error text)."""
+    try:
+        msg = json.loads(raw)
+    except json.JSONDecodeError:
+        return None, "Invalid JSON"
+    if not isinstance(msg, dict):
+        return None, "Message must be a JSON object"
+    text = msg.get("text", "")
+    if not isinstance(text, str):
+        return None, "text must be a string"
+    if len(text) > MAX_TEXT_CHARS:
+        return None, f"text too long (max {MAX_TEXT_CHARS} characters)"
+    if not isinstance(msg.get("role", ""), str):
+        return None, "role must be a string"
+    return msg, None
+
+
 @app.websocket("/ws")
 async def websocket_endpoint(ws: WebSocket):
     prompt = ws.app.state.prompt
@@ -43,7 +78,11 @@ async def websocket_endpoint(ws: WebSocket):
     try:
         while True:
             raw = await ws.receive_text()
-            msg: dict[str, str] = json.loads(raw)
+            msg, err = parse_client_message(raw)
+            if msg is None:
+                logger.warning(f"Rejected client frame: {err}")
+                await ws.send_text(json.dumps(emit("error", err)))
+                continue
             role = msg.get("role")
             text = msg.get("text", "")
             logger.debug(f"Received msg: role={role!r} text={text[:80]!r}")
@@ -54,39 +93,42 @@ async def websocket_endpoint(ws: WebSocket):
                 if text == "toggle_stream":
                     USE_LIVE_CAMERA["value"] = not USE_LIVE_CAMERA["value"]
                     new_mode = "Live camera" if USE_LIVE_CAMERA["value"] else "Static video"
-                    system_msg = {"role": "system", "text": f"Switched to: {new_mode}"}
+                    system_msg = emit("system", f"Switched to: {new_mode}")
                     await ws.send_text(json.dumps(system_msg))
 
                 else:
-                    if temperature is not None:
-                        settings.set_temperature(temperature)
-                        logger.info(f"Temperature set to: {settings.get_temperature():.2f}")
-
                     resample_fps = msg.get("resample_fps", None)
-                    if resample_fps is not None:
-                        settings.set_resample_fps(resample_fps)
-                        logger.info(f"Resample fps set to: {settings.get_resample_fps()}")
+                    try:
+                        if temperature is not None:
+                            settings.set_temperature(temperature)
+                            logger.info(f"Temperature set to: {settings.get_temperature():.2f}")
+                        if resample_fps is not None:
+                            settings.set_resample_fps(resample_fps)
+                            logger.info(f"Resample fps set to: {settings.get_resample_fps()}")
+                    except ValueError as e:
+                        await ws.send_text(json.dumps(emit("error", str(e))))
+                        continue
 
                     if text:
                         prompt.set(text)
                         logger.info(f"Prompt updated to: {text}")
 
-                    echo_msg = {
-                        "role": "system",
-                        "text": (
-                            f"Prompt changed to: {text}, Temperature: {settings.get_temperature():.2f}, "
-                            f"Resample: {settings.effective_resample_fps():.2f} fps"
-                        ),
-                    }
+                    echo_msg = emit(
+                        "system",
+                        f"Prompt changed to: {text}, Temperature: {settings.get_temperature():.2f}, "
+                        f"Resample: {settings.effective_resample_fps():.2f} fps",
+                    )
                     await ws.send_text(json.dumps(echo_msg))
 
             else:
                 logger.warning(f"Unhandled role: {role}")
-                await ws.send_text(json.dumps({"role": "system", "text": f"Unknown role: {role}"}))
+                await ws.send_text(json.dumps(emit("error", f"Unknown role: {role}")))
 
     except WebSocketDisconnect:
         logger.info("Client disconnected")
-        active_connections.remove(ws)
+    finally:
+        if ws in active_connections:
+            active_connections.remove(ws)
 
 
 @app.get("/video_feed")
@@ -136,33 +178,30 @@ def start_server():
     uvicorn.run("web_engine:app", host="0.0.0.0", port=8000, reload=False)
 
 
-def broadcast_sync(msg: dict):
+def broadcast_sync(msg: dict, timeout: float = 5.0) -> None:
+    """Called from worker threads: run the broadcast on the server's own event loop."""
+    loop = getattr(app.state, "loop", None)
+    if loop is None:
+        logger.warning("Server event loop not running yet, dropping broadcast.")
+        return
+    future = asyncio.run_coroutine_threadsafe(broadcast(msg), loop)
     try:
-        asyncio.run(broadcast(msg))
-    except RuntimeError:
-        # Already inside an event loop (common in FastAPI)
-        asyncio.create_task(broadcast(msg))
+        future.result(timeout=timeout)
+    except TimeoutError:
+        logger.warning("Broadcast timed out.")
 
 
-async def broadcast(message: str):
-    to_remove = []
-
+async def broadcast(message: dict) -> None:
+    """Send to every client; sockets that fail are pruned. Runs on the server loop only."""
     msg = json.dumps(message)
+    sockets = list(active_connections)
+    results = await asyncio.gather(*(ws.send_text(msg) for ws in sockets), return_exceptions=True)
 
-    for ws in active_connections:
-        try:
-            asyncio.create_task(ws.send_text(msg))
-        except Exception as e:
-            logger.error(f"Failed to send: {e}")
-            to_remove.append(ws)
-
-    for ws in to_remove:
-        try:
+    for ws, result in zip(sockets, results, strict=True):
+        if isinstance(result, BaseException):
+            logger.error(f"Failed to send, dropping connection: {result!r}")
             if ws in active_connections:
                 active_connections.remove(ws)
-
-        except ValueError:
-            logger.warning("Tried to remove non-existent WebSocket.")
 
 
 def start_server_threaded(prompt=None, settings=None):

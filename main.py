@@ -11,7 +11,7 @@ from concurrent.futures import ThreadPoolExecutor
 
 from prompting.prompting import Prompt, RuntimeSettings
 from utils.vlm_wrapper import VLM
-from web_engine import start_server_threaded, broadcast_sync
+from web_engine import start_server_threaded, broadcast_sync, emit
 from video_handling.clip_handling import ClipRecorder
 
 logger.remove()
@@ -51,21 +51,12 @@ def process_clip(
         logger.info(_message)
 
         # Send to frontend
-        msg = {
-            'output': output,
-            'delay': delay,
-            'status': 'OK'
-        }
-        broadcast(msg)
+        broadcast(emit("vlm", output, delay=delay))
 
-    except Exception as e:
-        err = f"Failed to process: {e}"
-        logger.error(err)
-        msg = {
-            'status': 'ERROR',
-            'msg': err
-        }
-        broadcast(msg)
+    except Exception as e:  # noqa: BLE001 - worker boundary: logged and reported to the UI
+        # Inference can fail in many ways (CUDA, decoding, model); the worker must survive and tell the UI.
+        logger.exception("Failed to process clip")
+        broadcast(emit("error", f"Failed to process: {e}"))
 
     finally:
         # README promises clips are deleted after inference.

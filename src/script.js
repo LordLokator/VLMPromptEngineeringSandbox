@@ -1,33 +1,25 @@
 
 let ws = null;
 let retryDelayMs = 1000;
+let reconnectTimer = null;
 const MAX_RETRY_MS = 10000;
 const chat = document.getElementById("chat");
 const msgInput = document.getElementById("msgInput");
 const MAX_MESSAGES = 100;
 const CHAT_ROLES = ["user", "system", "vlm", "error"];
+const SERVER_TYPES = ["system", "vlm", "error"];
 
 const presetBar = document.getElementById("presetBar");
 const saveBtn = document.getElementById("savePresetBtn");
 
 function handleServerMessage(data) {
-    // Accepted shapes: new {type: 'vlm'|'error'|'system', text, delay?},
-    // legacy {output, delay, status}, legacy {status: 'ERROR', msg}, legacy {role, text}.
-    const withDelay = (text, delay) =>
-        typeof delay === "number" ? `${text} (Δt: ${delay.toFixed(2)}s)` : text;
-
-    if (typeof data.type === "string" && "text" in data) {
-        addChatMessage(data.type, withDelay(data.text, data.delay));
-    } else if (data.status === "ERROR") {
-        addChatMessage("error", data.msg || "Unknown server error");
-    } else if (typeof data.output === "string") {
-        // An empty output is a valid (empty) VLM line.
-        addChatMessage("vlm", withDelay(data.output, data.delay));
-    } else if (data.role && data.text) {
-        addChatMessage(data.role, data.text);
-    } else {
+    // Server envelope: {type: 'vlm'|'error'|'system', text, delay?}
+    if (typeof data.type !== "string" || typeof data.text !== "string" || !SERVER_TYPES.includes(data.type)) {
         console.warn("Unhandled message format:", data);
+        return;
     }
+    const text = typeof data.delay === "number" ? `${data.text} (Δt: ${data.delay.toFixed(2)}s)` : data.text;
+    addChatMessage(data.type, text);
 }
 
 function connect() {
@@ -38,12 +30,13 @@ function connect() {
         addChatMessage("system", "Connected");
     };
     ws.onerror = (err) => {
+        // onclose always follows and reports to the chat.
         console.error("WebSocket error:", err);
-        addChatMessage("error", "WebSocket error");
     };
     ws.onclose = () => {
         addChatMessage("system", `Disconnected, retrying in ${retryDelayMs / 1000}s`);
-        setTimeout(connect, retryDelayMs);
+        clearTimeout(reconnectTimer);
+        reconnectTimer = setTimeout(connect, retryDelayMs);
         retryDelayMs = Math.min(retryDelayMs * 2, MAX_RETRY_MS);
     };
     ws.onmessage = (event) => {
@@ -153,8 +146,6 @@ async function loadPresetButtons() {
         addChatMessage("error", "Could not load presets");
         return;
     }
-    const presetBar = document.getElementById("presetBar");
-
     presets.forEach(preset => {
         const btn = document.createElement("button");
         btn.className = `btn btn-sm rounded-pill text-white`;

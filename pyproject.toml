@@ -7,11 +7,7 @@ extend-exclude = [".local", "VideoLLaMA3"]
 select = ["E", "F", "B", "T20", "BLE", "S104"]
 
 [tool.ruff.lint.per-file-ignores]
-"main.py" = ["BLE001"]  # removed by T37
-"utils/file_management.py" = ["BLE001"]  # removed by T37
-"utils/vlm_wrapper.py" = ["BLE001"]  # removed by T16
-"video_handling/clip_handling.py" = ["BLE001"]  # removed by T37
-"web_engine.py" = ["BLE001", "S104"]  # BLE001 removed by T37/T38, S104 by T41
+"web_engine.py" = ["S104"]  # removed by T41
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
