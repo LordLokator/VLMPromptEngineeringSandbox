@@ -29,4 +29,4 @@ def append_dict_to_json(file_path: str, new_data: dict):
             logger.info(f"Appended data to JSON: {new_data}")
 
         else:
-            logger.debug(f"Prompt remains the same, history not updated.")
+            logger.debug("Prompt remains the same, history not updated.")

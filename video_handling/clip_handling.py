@@ -4,7 +4,6 @@ import glob
 import os
 import threading
 import time
-from collections import deque
 from typing import Callable
 from loguru import logger
 
@@ -20,7 +19,7 @@ class ClipRecorder:
         self.out_dir = "./tmp"
         self.running = False
         self.counter = 0
-        self.flush_callback: Callable = lambda path: print(f"!!! {path} !!!") # for debugging purposes
+        self.flush_callback: Callable = lambda path: logger.debug(f"Clip flushed: {path}")  # default, replaced by caller
 
         # Create './tmp' if it doesn't exists:
         os.makedirs(self.out_dir, exist_ok=True)
