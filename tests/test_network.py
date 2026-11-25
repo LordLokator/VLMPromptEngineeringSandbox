@@ -1,3 +1,4 @@
+from pathlib import Path
 import json
 
 import pytest
@@ -55,3 +56,9 @@ def test_paths_do_not_depend_on_cwd(monkeypatch, tmp_path):
     from prompting import prompting
     from utils.button_presets import USER_PRESETS_FILE
     assert prompting.HISTORY_FILE.is_absolute() and USER_PRESETS_FILE.is_absolute()
+
+
+def test_static_mounts_are_absolute():
+    mounts = {r.path: r.app.directory for r in web_engine.app.routes if r.path in ("/src", "/presets")}
+    assert set(mounts) == {"/src", "/presets"}
+    assert all(Path(d).is_absolute() for d in mounts.values())
