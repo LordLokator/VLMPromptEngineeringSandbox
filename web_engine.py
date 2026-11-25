@@ -1,4 +1,5 @@
 import asyncio
+from contextlib import asynccontextmanager
 import datetime
 import sys
 import json
@@ -15,7 +16,15 @@ from video_handling.streaming import video_stream_generator, USE_LIVE_CAMERA
 
 active_connections: list[WebSocket] = []
 
-app = FastAPI()
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    # Worker threads hand broadcasts to this loop (see broadcast_sync).
+    app.state.loop = asyncio.get_running_loop()
+    yield
+    app.state.loop = None
+
+
+app = FastAPI(lifespan=lifespan)
 
 # Serve static frontend
 app.mount("/src", StaticFiles(directory="src"), name="src")
@@ -166,33 +175,30 @@ def start_server():
     uvicorn.run("web_engine:app", host="0.0.0.0", port=8000, reload=False)
 
 
-def broadcast_sync(msg: dict):
+def broadcast_sync(msg: dict, timeout: float = 5.0) -> None:
+    """Called from worker threads: run the broadcast on the server's own event loop."""
+    loop = getattr(app.state, "loop", None)
+    if loop is None:
+        logger.warning("Server event loop not running yet, dropping broadcast.")
+        return
+    future = asyncio.run_coroutine_threadsafe(broadcast(msg), loop)
     try:
-        asyncio.run(broadcast(msg))
-    except RuntimeError:
-        # Already inside an event loop (common in FastAPI)
-        asyncio.create_task(broadcast(msg))
+        future.result(timeout=timeout)
+    except TimeoutError:
+        logger.warning("Broadcast timed out.")
 
 
-async def broadcast(message: str):
-    to_remove = []
-
+async def broadcast(message: dict) -> None:
+    """Send to every client; sockets that fail are pruned. Runs on the server loop only."""
     msg = json.dumps(message)
+    sockets = list(active_connections)
+    results = await asyncio.gather(*(ws.send_text(msg) for ws in sockets), return_exceptions=True)
 
-    for ws in active_connections:
-        try:
-            asyncio.create_task(ws.send_text(msg))
-        except Exception as e:
-            logger.error(f"Failed to send: {e}")
-            to_remove.append(ws)
-
-    for ws in to_remove:
-        try:
+    for ws, result in zip(sockets, results, strict=True):
+        if isinstance(result, BaseException):
+            logger.error(f"Failed to send, dropping connection: {result!r}")
             if ws in active_connections:
                 active_connections.remove(ws)
-
-        except ValueError:
-            logger.warning("Tried to remove non-existent WebSocket.")
 
 
 def start_server_threaded(prompt=None, settings=None):
