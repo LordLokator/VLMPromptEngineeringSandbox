@@ -1,19 +1,18 @@
 import asyncio
 from contextlib import asynccontextmanager
-import datetime
-import sys
 import json
 import os
 from urllib.parse import urlparse
 from fastapi import Request
 from utils.button_presets import load_presets, load_user_presets, save_user_preset
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect
-from fastapi.responses import HTMLResponse, JSONResponse, StreamingResponse, FileResponse
+from fastapi.responses import JSONResponse, StreamingResponse, FileResponse
 from fastapi.staticfiles import StaticFiles
 from loguru import logger
 import threading
 import uvicorn
 
+from utils.file_management import BASE_DIR
 from video_handling.streaming import video_stream_generator, USE_LIVE_CAMERA
 
 HOST: str = os.environ.get("HOST", "127.0.0.1")
@@ -42,7 +41,7 @@ app.mount("/presets", StaticFiles(directory="presets"), name="presets")
 
 @app.get("/")
 async def get():
-    return HTMLResponse(open("src/page.html").read())
+    return FileResponse(BASE_DIR / "src" / "page.html", media_type="text/html")
 
 
 @app.get("/favicon.ico")
@@ -155,16 +154,6 @@ def video_feed():
     )
 
 
-@app.get("/metadata")
-def metadata():
-    return {
-        "timestamp": datetime.datetime.now(),
-        "tokens/sec": 35.2,
-        "throughput": "12 fps",
-        "session_id": "abc123"
-    }
-
-
 @app.get("/preset_buttons")
 def get_presets():
     sys_presets = load_presets()
@@ -247,16 +236,3 @@ def start_server_threaded(prompt=None, settings=None):
     )
     t.start()
 
-
-if __name__ == "__main__":
-    import sys
-    from loguru import logger
-
-    logger.remove()
-    logger.add(sys.stderr, level="DEBUG")
-    logger.info("Starting server on http://localhost:8000")
-
-    try:
-        start_server_threaded()
-    except KeyboardInterrupt:
-        logger.info("KeyboardInterrupt detected.")
