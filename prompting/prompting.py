@@ -76,7 +76,7 @@ class RuntimeSettings:
         """Clamp to 1..clip fps; returns the effective rate the processor will use."""
         try:
             v = int(value)
-        except (TypeError, ValueError) as e:
+        except (TypeError, ValueError, OverflowError) as e:
             raise ValueError(f"resample fps must be an integer, got {value!r}") from e
         v = min(max(v, 1), self._clip_fps)
         with self._lock:

@@ -68,3 +68,8 @@ def test_effective_rate_matches_stride(v):
 def test_resample_rejects_non_numeric():
     with pytest.raises(ValueError):
         RuntimeSettings().set_resample_fps("x")
+
+
+def test_resample_rejects_infinity():
+    with pytest.raises(ValueError):
+        RuntimeSettings().set_resample_fps(float("inf"))
