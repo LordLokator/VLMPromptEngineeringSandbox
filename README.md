@@ -66,6 +66,16 @@ WebSocket broadcast
 Browser UI
 ```
 
+Stack: FastAPI + uvicorn (WebSocket at `/ws`), OpenCV, vanilla JS frontend.
+
+----
+
+## Known Limitations
+
+- The browser stream and the clip the VLM sees come from separate decoders at different positions, so they are not synchronised.
+
+- No authentication; intended for localhost use only.
+
 ----
 
 ## Key Design Choices
@@ -108,17 +118,21 @@ Device: cuda:0
 
 ### Memory:
 
-&rarr; ~24GB VRAM required (no quantization)
+&rarr; ~24GB VRAM (author-reported, not independently measured). The weights alone are about 15GB (7.6B parameters x 2 bytes, an estimate). No quantization.
+
+&rarr; A CUDA GPU with FlashAttention2 support (Ampere or newer) is required.
 
 ### Latency:
 
-&rarr; ~200ms at 10 FPS resampling
+&rarr; ~200ms at 10 FPS resampling (author-reported, not independently measured)
 
-&rarr; ~400ms at 30–40 FPS (in similar setup)
+&rarr; ~400ms at 30–40 FPS in a similar setup (author-reported, not independently measured)
 
 ----
 
 ## Quick Setup
+
+Python 3.11 is required (the pinned `numpy==1.24.4` has no wheels for Python 3.12 or newer).
 
 ```
 git clone https://github.com/LordLokator/VLMPromptEngineeringSandbox VLMDemo
@@ -144,11 +158,9 @@ http://localhost:8000/
     
     Bottom Left:
     
-        Preset buttons (random colors)
+        Preset buttons (random colors; built-in and saved user presets)
         
-        Save preset (disabled if empty)
-        
-        Load preset
+        Save as Preset (disabled if empty)
         
         Temperature slider
 
@@ -178,15 +190,21 @@ Prompt history stored in:
 
 - Dominant Action
 
+- Crossing
+
 - Vehicle Types
 
-- OCR Pass
-
-- Parking Events
+- Groups
 
 - Unusual Behavior
 
-- Activity Level
+- Activity
+
+- Sun
+
+- Parking Events
+
+- OCR Pass
 
 ----
 
