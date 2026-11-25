@@ -132,3 +132,44 @@ def test_static_video_paced_sleeps(monkeypatch, tmp_path):
         next(gen)
     gen.close()
     assert time.monotonic() - t0 < 0.15
+
+
+def test_toggle_reopens_stream_once_at_clip_boundary(monkeypatch, tmp_path):
+    opened: list[bool] = []
+    closed: list[int] = []
+    flag = {"value": False}
+
+    def make_stream(mode: bool):
+        frame = np.zeros((8, 8, 3), dtype=np.uint8)
+        try:
+            while True:
+                yield frame
+        finally:
+            closed.append(len(opened))
+
+    def fake_source(paced: bool = True):
+        opened.append(flag["value"])
+        return make_stream(flag["value"])
+
+    clips: list[int] = []
+    done = threading.Event()
+
+    def fake_write(frames, path, fps=60):
+        clips.append(len(frames))
+        if len(clips) == 1:
+            flag["value"] = True  # flip mid-run, after the first clip is written
+
+    def on_flush(_p):
+        if len(clips) >= 3:
+            done.set()
+
+    monkeypatch.setattr(clip_handling, "get_stream_source", fake_source)
+    monkeypatch.setattr(clip_handling, "write_video", fake_write)
+    monkeypatch.setattr(clip_handling, "USE_LIVE_CAMERA", flag)
+    rec = ClipRecorder(buffer_seconds=0.1, fps=10)
+    rec.out_dir = str(tmp_path)
+    rec.start(on_flush)
+    assert done.wait(timeout=5)
+    rec.running = False
+    assert opened == [False, True]
+    assert closed[0] == 1  # old stream closed before the new one was opened

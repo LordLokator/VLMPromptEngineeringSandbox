@@ -9,7 +9,7 @@ from loguru import logger
 
 from utils.file_management import BASE_DIR, delete_files, full_path
 from video_handling.write_video import write_video
-from video_handling.streaming import get_stream_source
+from video_handling.streaming import USE_LIVE_CAMERA, get_stream_source
 
 
 class ClipRecorder:
@@ -28,9 +28,17 @@ class ClipRecorder:
 
     def _run(self):
         logger.info("ClipRecorder started.")
+        open_mode = USE_LIVE_CAMERA["value"]
         stream = get_stream_source(paced=False)
 
         while self.running:
+            # Camera toggle: reopen the source at the next clip boundary.
+            if USE_LIVE_CAMERA["value"] != open_mode:
+                logger.info("Capture mode changed, reopening stream.")
+                stream.close()
+                open_mode = USE_LIVE_CAMERA["value"]
+                stream = get_stream_source(paced=False)
+
             frames = []
             target_frames = int(self.buffer_seconds * self.fps)
             frame_interval = 1 / self.fps
