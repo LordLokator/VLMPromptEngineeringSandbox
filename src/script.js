@@ -1,5 +1,7 @@
 
-const ws = new WebSocket(`ws://${location.host}/ws`);
+let ws = null;
+let retryDelayMs = 1000;
+const MAX_RETRY_MS = 10000;
 const chat = document.getElementById("chat");
 const msgInput = document.getElementById("msgInput");
 const MAX_MESSAGES = 100;
@@ -31,13 +33,39 @@ function handleServerMessage(data) {
     }
 }
 
-ws.onmessage = (event) => {
-    try {
-        handleServerMessage(JSON.parse(event.data));
-    } catch (err) {
-        console.error("Failed to parse message:", err, event.data);
+function connect() {
+    const scheme = location.protocol === "https:" ? "wss" : "ws";
+    ws = new WebSocket(`${scheme}://${location.host}/ws`);
+    ws.onopen = () => {
+        retryDelayMs = 1000;
+        addChatMessage("system", "Connected");
+    };
+    ws.onerror = (err) => {
+        console.error("WebSocket error:", err);
+        addChatMessage("error", "WebSocket error");
+    };
+    ws.onclose = () => {
+        addChatMessage("system", `Disconnected, retrying in ${retryDelayMs / 1000}s`);
+        setTimeout(connect, retryDelayMs);
+        retryDelayMs = Math.min(retryDelayMs * 2, MAX_RETRY_MS);
+    };
+    ws.onmessage = (event) => {
+        try {
+            handleServerMessage(JSON.parse(event.data));
+        } catch (err) {
+            console.error("Failed to parse message:", err, event.data);
+        }
+    };
+}
+
+function send(payload) {
+    if (!ws || ws.readyState !== WebSocket.OPEN) {
+        addChatMessage("error", "Not connected, message not sent");
+        return false;
     }
-};
+    ws.send(JSON.stringify(payload));
+    return true;
+}
 
 
 function sendMessage() {
@@ -51,7 +79,7 @@ function sendMessage() {
         temperature: temperature
     };
 
-    ws.send(JSON.stringify(payload));
+    if (!send(payload)) return;
     addChatMessage("user", text);
 
     msgInput.value = "";
@@ -61,7 +89,7 @@ function sendMessage() {
 
 function toggleStream() {
     const payload = { role: "user", text: "toggle_stream" };
-    ws.send(JSON.stringify(payload));
+    if (!send(payload)) return;
 
     addChatMessage("system", "Stream toggle requested");
 
@@ -181,6 +209,7 @@ document.getElementById("clearChatBtn").onclick = () => {
 };
 
 window.onload = () => {
+    connect();
     loadPresetButtons();
     updateSaveButtonState();
 };

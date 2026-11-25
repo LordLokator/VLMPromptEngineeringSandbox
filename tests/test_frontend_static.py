@@ -23,3 +23,12 @@ def test_message_handler_covers_all_shapes():
 def test_error_style_exists():
     css = (SCRIPT.parent / "style.css").read_text(encoding="utf-8")
     assert ".chat-message.error" in css
+
+
+def test_websocket_client_is_robust():
+    src = SCRIPT.read_text(encoding="utf-8")
+    assert "wss" in src
+    assert "ws://${" not in src
+    assert "onclose" in src and "onopen" in src and "onerror" in src
+    sends = [ln for ln in src.splitlines() if "ws.send(" in ln]
+    assert len(sends) == 1, "all sends must go through the send() helper"
