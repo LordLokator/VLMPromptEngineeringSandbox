@@ -193,10 +193,10 @@ async def post_preset(request: Request):
     return {"status": "ok", "label": label}
 
 
-def start_server():
+def make_server() -> uvicorn.Server:
     if not IS_LOOPBACK:
         logger.warning(f"Binding to {HOST}: the server has no authentication, anyone on the network can use it.")
-    uvicorn.run("web_engine:app", host=HOST, port=PORT, reload=False)
+    return uvicorn.Server(uvicorn.Config("web_engine:app", host=HOST, port=PORT, reload=False))
 
 
 def broadcast_sync(msg: dict, timeout: float = 5.0) -> None:
@@ -225,14 +225,13 @@ async def broadcast(message: dict) -> None:
                 active_connections.remove(ws)
 
 
-def start_server_threaded(prompt=None, settings=None):
+def start_server_threaded(prompt=None, settings=None) -> uvicorn.Server:
+    """Run uvicorn in a daemon thread; set `.should_exit = True` on the returned server to stop it."""
 
     app.state.prompt = prompt
     app.state.settings = settings
 
-    t = threading.Thread(
-        target=start_server,
-        daemon=True
-    )
-    t.start()
+    server = make_server()
+    threading.Thread(target=server.run, daemon=True).start()
+    return server
 

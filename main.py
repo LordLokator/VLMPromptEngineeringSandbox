@@ -1,7 +1,7 @@
 # main.py
+import signal
 import sys
 import threading
-import time
 import timeit
 from functools import partial
 from pathlib import Path
@@ -95,6 +95,18 @@ def make_clip_handler(
     return on_clip_flush
 
 
+def shutdown(recorder, executor: ThreadPoolExecutor, server, busy: threading.Lock, timeout: float = 5.0) -> None:
+    """Stop capturing first, let the in-flight inference finish (bounded), then stop the web server."""
+    logger.info("Shutting down...")
+    recorder.stop()
+    executor.shutdown(wait=False, cancel_futures=True)
+    if busy.acquire(timeout=timeout):
+        busy.release()
+    else:
+        logger.warning(f"Inference still running after {timeout:.0f}s, exiting anyway.")
+    server.should_exit = True
+
+
 def main():
     logger.info("Main app initialization...")
 
@@ -103,7 +115,7 @@ def main():
     settings = RuntimeSettings(clip_fps=FPS)
 
     # Start server in separate thread
-    start_server_threaded(prompt, settings)
+    server = start_server_threaded(prompt, settings)
 
     # Create Video stream
     recorder = ClipRecorder(
@@ -124,17 +136,26 @@ def main():
         max_frames=MAX_FRAMES,
     )
 
-    on_clip_flush = make_clip_handler(process, executor, threading.Lock())
+    busy = threading.Lock()
+    on_clip_flush = make_clip_handler(process, executor, busy)
 
     recorder.start(flush_callback=on_clip_flush, on_error=lambda text: broadcast_sync(emit("error", text)))
 
-    try:
-        while True:
-            time.sleep(1)
-    except KeyboardInterrupt:
-        logger.info("Exited with KeyboardInterrupt.")
-        executor.shutdown(wait=False, cancel_futures=True)
-        recorder.stop()
+    stop_event = threading.Event()
+
+    def request_stop(signum, _frame) -> None:
+        logger.info(f"Received signal {signum}, stopping.")
+        stop_event.set()
+
+    for name in ("SIGINT", "SIGTERM"):  # SIGTERM semantics differ on Windows; skip if absent
+        if hasattr(signal, name):
+            signal.signal(getattr(signal, name), request_stop)
+
+    # Short timeouts keep the main thread responsive to signals on every platform.
+    while not stop_event.wait(0.5):
+        pass
+
+    shutdown(recorder, executor, server, busy)
 
 
 if __name__ == "__main__":
