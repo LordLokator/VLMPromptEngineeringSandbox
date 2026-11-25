@@ -185,7 +185,7 @@ saveBtn.onclick = async () => {
         });
         const result = await res.json();
         if (!res.ok || result.status !== "ok") {
-            throw new Error(result.msg || `HTTP ${res.status}`);
+            throw new Error(result.reason || result.msg || `HTTP ${res.status}`);
         }
 
         // Only clear the textarea once the server confirmed the save.

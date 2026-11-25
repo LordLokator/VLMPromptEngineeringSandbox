@@ -6,7 +6,7 @@ import json
 from fastapi import Request
 from utils.button_presets import load_presets, load_user_presets, save_user_preset
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect
-from fastapi.responses import HTMLResponse, StreamingResponse, FileResponse
+from fastapi.responses import HTMLResponse, JSONResponse, StreamingResponse, FileResponse
 from fastapi.staticfiles import StaticFiles
 from loguru import logger
 import threading
@@ -162,16 +162,27 @@ def get_presets():
 
 @app.post("/save_preset")
 async def post_preset(request: Request):
-    data = await request.json()
+    def bad(reason: str) -> JSONResponse:
+        return JSONResponse({"status": "error", "reason": reason}, status_code=400)
 
-    label = data.get("label", "").strip()[:25]
-    text = data.get("text", "").strip()
+    try:
+        data = await request.json()
+    except ValueError:
+        return bad("Body must be valid JSON")
+    if not isinstance(data, dict):
+        return bad("Body must be a JSON object")
 
-    if label and text:
-        save_user_preset(label, text)
-        return {"status": "ok", "label": label}
+    label, text = data.get("label"), data.get("text")
+    if not isinstance(label, str) or not isinstance(text, str):
+        return bad("label and text must be strings")
+    label, text = label.strip()[:25], text.strip()
+    if not label or not text:
+        return bad("label and text must not be empty")
+    if len(text) > MAX_TEXT_CHARS:
+        return bad(f"text too long (max {MAX_TEXT_CHARS} characters)")
 
-    return {"status": "error", "reason": "Invalid input"}
+    save_user_preset(label, text)
+    return {"status": "ok", "label": label}
 
 
 def start_server():
