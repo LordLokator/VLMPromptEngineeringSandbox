@@ -32,3 +32,15 @@ def test_websocket_client_is_robust():
     assert "onclose" in src and "onopen" in src and "onerror" in src
     sends = [ln for ln in src.splitlines() if "ws.send(" in ln]
     assert len(sends) == 1, "all sends must go through the send() helper"
+
+
+def test_save_flow_clears_after_success():
+    src = SCRIPT.read_text(encoding="utf-8")
+    assert "AbortController" in src
+    start = src.index("saveBtn.onclick")
+    handler = src[start:]
+    assert "catch" in handler
+    check = handler.index('result.status !== "ok"')
+    clear = handler.index('msgInput.value = ""')
+    assert clear > check
+    assert src.count("fetch(") == 1, "all requests go through fetchWithTimeout"

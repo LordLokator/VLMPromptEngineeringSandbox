@@ -132,9 +132,29 @@ function getRandomColor() {
     return hexColors[Math.floor(Math.random() * hexColors.length)];
 }
 
+const FETCH_TIMEOUT_MS = 10000;
+
+async function fetchWithTimeout(url, options = {}) {
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS);
+    try {
+        return await fetch(url, { ...options, signal: controller.signal });
+    } finally {
+        clearTimeout(timer);
+    }
+}
+
 async function loadPresetButtons() {
-    const resp = await fetch("/preset_buttons");
-    const presets = await resp.json();
+    let presets;
+    try {
+        const resp = await fetchWithTimeout("/preset_buttons");
+        if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+        presets = await resp.json();
+    } catch (err) {
+        console.error("Failed to load presets:", err);
+        addChatMessage("error", "Could not load presets");
+        return;
+    }
     const presetBar = document.getElementById("presetBar");
 
     presets.forEach(preset => {
@@ -166,19 +186,23 @@ saveBtn.onclick = async () => {
     if (!label || label.trim().length === 0) return;
 
     const cleanLabel = label.trim().slice(0, 25);
-    msgInput.value = "";
-    updateSaveButtonState();
-
     const payload = { label: cleanLabel, text: text };
 
-    const res = await fetch("/save_preset", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(payload)
-    });
+    try {
+        const res = await fetchWithTimeout("/save_preset", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(payload)
+        });
+        const result = await res.json();
+        if (!res.ok || result.status !== "ok") {
+            throw new Error(result.msg || `HTTP ${res.status}`);
+        }
 
-    const result = await res.json();
-    if (result.status === "ok") {
+        // Only clear the textarea once the server confirmed the save.
+        msgInput.value = "";
+        updateSaveButtonState();
+
         const btn = document.createElement("button");
         btn.className = `btn btn-sm rounded-pill text-white`;
         btn.style.backgroundColor = getRandomColor();
@@ -190,8 +214,9 @@ saveBtn.onclick = async () => {
             updateSaveButtonState();
         };
         presetBar.appendChild(btn);
-    } else {
-        alert("Failed to save preset.");
+    } catch (err) {
+        console.error("Failed to save preset:", err);
+        addChatMessage("error", `Failed to save preset: ${err.message}`);
     }
 };
 
