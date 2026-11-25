@@ -2,6 +2,7 @@
 import signal
 import sys
 import threading
+import time
 import timeit
 from functools import partial
 from pathlib import Path
@@ -73,9 +74,16 @@ def make_clip_handler(
     process: Callable[[str], None],
     executor: ThreadPoolExecutor,
     busy: threading.Lock,
+    notify: Callable[[dict], None] | None = None,
+    notice_interval: float = 5.0,
+    clock: Callable[[], float] = time.monotonic,
 ) -> Callable[[str], None]:
-    """Return a flush callback that drops (and deletes) clips while inference is in flight."""
+    """Return a flush callback that drops (and deletes) clips while inference is in flight.
+
+    On a drop, `notify` gets a muted system frame, at most once per `notice_interval` seconds.
+    """
     dropped = 0
+    last_notice = float("-inf")
 
     def run(clip_path: str) -> None:
         try:
@@ -84,12 +92,16 @@ def make_clip_handler(
             busy.release()
 
     def on_clip_flush(clip_path: str) -> None:
-        nonlocal dropped
+        nonlocal dropped, last_notice
         if not busy.acquire(blocking=False):
             dropped += 1
             telemetry.record_drop()
             logger.warning(f"Inference busy, dropping clip (dropped so far: {dropped}): {clip_path}")
             Path(clip_path).unlink(missing_ok=True)
+            now = clock()
+            if notify is not None and now - last_notice >= notice_interval:
+                last_notice = now
+                notify(emit("system", "Model busy, skipped a clip", muted=True))
             return
         logger.info(f"Clip flushed: {clip_path}")
         try:
@@ -164,7 +176,7 @@ def main():
                 get_fps=settings.get_resample_fps,
                 max_frames=MAX_FRAMES,
             )
-            on_clip_flush = make_clip_handler(process, executor, busy)
+            on_clip_flush = make_clip_handler(process, executor, busy, notify=broadcast_sync)
             recorder.start(flush_callback=on_clip_flush, on_error=lambda text: broadcast_sync(emit("error", text)))
 
         # Short timeouts keep the main thread responsive to signals on every platform.

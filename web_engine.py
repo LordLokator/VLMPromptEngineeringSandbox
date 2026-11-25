@@ -56,7 +56,7 @@ MAX_TEXT_CHARS = 2000
 WS_MAX_BYTES = 64 * 1024
 
 
-def emit(kind: str, text: str, **extra: float) -> dict:
+def emit(kind: str, text: str, **extra: float | bool) -> dict:
     """Build a server -> client frame: {"type": "vlm"|"error"|"system", "text": str, ...}."""
     return {"type": kind, "text": text, **extra}
 

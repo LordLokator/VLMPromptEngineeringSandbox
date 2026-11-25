@@ -92,6 +92,24 @@ def test_busy_clip_is_dropped_and_deleted(tmp_path):
     assert calls == [str(a), str(c)]
 
 
+def test_drop_notice_is_rate_limited(tmp_path):
+    busy = threading.Lock()
+    busy.acquire()  # inference "in flight": every clip is dropped
+    now = [0.0]
+    notices = []
+    handler = make_clip_handler(
+        lambda p: None, ThreadPoolExecutor(max_workers=1), busy, notify=notices.append, clock=lambda: now[0]
+    )
+    for t in (0.0, 1.0, 4.9, 5.0):
+        now[0] = t
+        f = tmp_path / f"c{t}.mp4"
+        f.write_bytes(b"x")
+        handler(str(f))
+        assert not f.exists()
+    assert len(notices) == 2
+    assert notices[0]["type"] == "system" and notices[0]["muted"] is True
+
+
 def test_shutdown_order_and_speed():
     import time
 

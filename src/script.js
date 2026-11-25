@@ -19,7 +19,7 @@ function handleServerMessage(data) {
         return;
     }
     const text = typeof data.delay === "number" ? `${data.text} (Δt: ${data.delay.toFixed(2)}s)` : data.text;
-    addChatMessage(data.type, text);
+    addChatMessage(data.type, text, data.muted === true);
 }
 
 function connect() {
@@ -88,10 +88,10 @@ function toggleStream() {
     img.src = `/video_feed?ts=${Date.now()}`;
 }
 
-function addChatMessage(role, msg) {
+function addChatMessage(role, msg, muted = false) {
     const line = document.createElement("div");
     const safeRole = CHAT_ROLES.includes(role) ? role : "system";
-    line.className = `chat-message ${safeRole}`;
+    line.className = `chat-message ${safeRole}${muted ? " muted" : ""}`;
     // textContent only: VLM output and server echoes are untrusted (XSS).
     const label = document.createElement("strong");
     label.textContent = `${capitalize(safeRole)}:`;

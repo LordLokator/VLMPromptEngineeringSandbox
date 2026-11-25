@@ -24,6 +24,12 @@ def test_message_handler_covers_all_shapes():
     assert "addChatMessage(\"System\"" not in src
 
 
+def test_muted_notice_supported():
+    src = SCRIPT.read_text(encoding="utf-8")
+    assert "data.muted === true" in src
+    assert ".chat-message.muted" in (SCRIPT.parent / "style.css").read_text(encoding="utf-8")
+
+
 def test_error_style_exists():
     css = (SCRIPT.parent / "style.css").read_text(encoding="utf-8")
     assert ".chat-message.error" in css
@@ -56,3 +62,12 @@ def test_resample_slider_and_payload():
     assert 'id="fpsSlider"' in html and 'min="1" max="10" step="1"' in html
     assert 'min="0.01"' in html  # temperature slider must not allow 0
     assert "resample_fps" in js
+
+
+def test_page_has_no_unprotected_external_assets():
+    html = (SCRIPT.parent / "page.html").read_text(encoding="utf-8")
+    tags = re.findall(r"<(?:script|link)[^>]*>", html)
+    bad = [t for t in tags if re.search(r"(?:src|href)=[\"']?(?:https?:)?//", t) and "integrity=" not in t]
+    assert bad == []
+    assert (SCRIPT.parent / "vendor" / "bootstrap.min.css").is_file()
+    assert (SCRIPT.parent / "vendor" / "bootstrap.LICENSE").is_file()

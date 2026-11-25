@@ -67,6 +67,12 @@ body {
     color: #212529;
 }
 
+/* Low-priority notices (e.g. skipped clips) */
+.chat-message.muted {
+    color: #6c757d;
+    font-size: 0.85em;
+}
+
 /* Green */
 .chat-message.vlm {
     color: #198754;
