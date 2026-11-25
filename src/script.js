@@ -3,6 +3,7 @@ const ws = new WebSocket(`ws://${location.host}/ws`);
 const chat = document.getElementById("chat");
 const msgInput = document.getElementById("msgInput");
 const MAX_MESSAGES = 100;
+const CHAT_ROLES = ["user", "system", "vlm", "error"];
 
 const presetBar = document.getElementById("presetBar");
 const saveBtn = document.getElementById("savePresetBtn");
@@ -60,8 +61,14 @@ function toggleStream() {
 
 function addChatMessage(role, msg) {
     const line = document.createElement("div");
-    line.className = `chat-message ${role}`;
-    line.innerHTML = `<strong>${capitalize(role)}:</strong> ${msg}`;
+    const safeRole = CHAT_ROLES.includes(role) ? role : "system";
+    line.className = `chat-message ${safeRole}`;
+    // textContent only: VLM output and server echoes are untrusted (XSS).
+    const label = document.createElement("strong");
+    label.textContent = `${capitalize(safeRole)}:`;
+    const body = document.createElement("span");
+    body.textContent = ` ${msg}`;
+    line.append(label, body);
     chat.appendChild(line);
 
     chat.scrollTop = chat.scrollHeight;
@@ -160,7 +167,7 @@ document.getElementById("tempSlider").addEventListener("input", () => {
 });
 
 document.getElementById("clearChatBtn").onclick = () => {
-    chat.innerHTML = "";
+    chat.replaceChildren();
 };
 
 window.onload = () => {
