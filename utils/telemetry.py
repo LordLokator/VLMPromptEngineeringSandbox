@@ -9,7 +9,7 @@ Prompt text, responses, clip paths and frames are never recorded.
 import os
 import time
 from contextlib import contextmanager
-from typing import Any, Iterator
+from typing import Any, Callable, Iterator
 
 from loguru import logger
 
@@ -96,18 +96,27 @@ def setup_telemetry(app: Any) -> None:
 
 
 @contextmanager
-def inference(backend: str, fps: int, max_frames: int, temperature: float) -> Iterator[None]:
-    """Span + duration histogram + error counter around one backend call. Re-raises errors."""
+def inference(backend: str, fps: int, max_frames: int, temperature: float) -> Iterator[Callable[[str], None]]:
+    """Span + duration histogram + error counter around one backend call. Re-raises errors.
+
+    Yields a setter for the backend label: a fallback chain only knows which backend answered afterwards.
+    """
     state = _state
     if state is None:
-        yield
+        yield lambda name: None
         return
     attrs = {"vlm.backend": backend, "vlm.fps": fps, "vlm.max_frames": max_frames, "vlm.temperature": temperature}
     outcome = "error"
     start = time.perf_counter()
     try:
-        with state.tracer.start_as_current_span("vlm.inference", attributes=attrs):
-            yield
+        with state.tracer.start_as_current_span("vlm.inference", attributes=attrs) as span:
+
+            def set_backend(name: str) -> None:
+                nonlocal backend
+                backend = name
+                span.set_attribute("vlm.backend", name)
+
+            yield set_backend
         outcome = "ok"
     finally:
         state.duration.record(time.perf_counter() - start, {"vlm.backend": backend, "outcome": outcome})

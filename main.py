@@ -41,13 +41,15 @@ def process_clip(
 
         fps, temperature = get_fps(), get_temperature()
         backend = getattr(vlm, "name", type(vlm).__name__)
-        with telemetry.inference(backend, fps, max_frames, temperature):
+        with telemetry.inference(backend, fps, max_frames, temperature) as set_backend:
             output, _temperature = vlm.forward(
                 video_path=clip_path,
                 fps=fps,
                 max_frames=max_frames,
                 temperature=temperature
             )
+            # A fallback chain only knows which backend answered after forward() returns.
+            set_backend(getattr(vlm, "name", backend))
 
         delay = timeit.default_timer() - start
 

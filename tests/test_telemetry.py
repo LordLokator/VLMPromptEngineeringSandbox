@@ -23,6 +23,10 @@ class FakeVLM:
         return PROMPT, temperature
 
 
+class GoodVLM(FakeVLM):
+    name = "good"
+
+
 def run(vlm):
     process_clip("c.mp4", vlm, lambda m: None, get_temperature=lambda: 0.5, get_fps=lambda: 3, max_frames=20)
 
@@ -86,6 +90,16 @@ def test_inference_span_and_histogram_ok(otel):
     (hist,) = points(reader)["vlm.inference.duration"]
     assert hist.attributes["outcome"] == "ok"
     assert "vlm.inference.errors" not in points(reader)
+
+
+def test_chain_fallback_labels_answering_backend(otel):
+    from utils.backends import ChainBackend
+
+    exporter, reader = otel
+    run(ChainBackend([FakeVLM(fail=True), GoodVLM()]))
+    (span,) = exporter.get_finished_spans()
+    assert span.attributes["vlm.backend"] == "good"
+    assert points(reader)["vlm.inference.duration"][0].attributes["vlm.backend"] == "good"
 
 
 def test_error_sets_status_and_counts(otel):
