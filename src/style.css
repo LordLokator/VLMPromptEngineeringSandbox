@@ -73,6 +73,11 @@ body {
     font-style: italic;
 }
 
+/* Red */
+.chat-message.error {
+    color: #dc3545;
+}
+
 #tempSlider {
     width: 100%;
 }
