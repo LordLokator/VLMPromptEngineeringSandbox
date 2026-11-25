@@ -4,7 +4,7 @@
 ruff            # linting (CI + local)
 pytest          # test runner
 httpx           # required by Starlette's TestClient
-pyyaml          # workflow/dependabot structure test
+pyyaml          # tests/test_workflows.py: workflow/dependabot structure test
 opencv-python-headless  # CI runners lack libGL; do not list opencv-python here
 fastapi         # web layer under test
 uvicorn[standard]  # server + websockets for /ws
