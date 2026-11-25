@@ -44,3 +44,14 @@ def test_index_served_and_metadata_removed(client):
     res = client.get("/")
     assert res.status_code == 200 and res.headers["content-type"].startswith("text/html")
     assert client.get("/metadata").status_code == 404
+
+
+def test_paths_do_not_depend_on_cwd(monkeypatch, tmp_path):
+    monkeypatch.chdir(tmp_path)
+    c = TestClient(web_engine.app)
+    assert c.get("/").status_code == 200
+    assert c.get("/preset_buttons").status_code == 200
+    assert c.get("/src/script.js").status_code == 200
+    from prompting import prompting
+    from utils.button_presets import USER_PRESETS_FILE
+    assert prompting.HISTORY_FILE.is_absolute() and USER_PRESETS_FILE.is_absolute()

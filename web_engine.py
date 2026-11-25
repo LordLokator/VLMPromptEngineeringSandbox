@@ -35,8 +35,8 @@ _docs = {} if IS_LOOPBACK else {"docs_url": None, "redoc_url": None, "openapi_ur
 app = FastAPI(lifespan=lifespan, **_docs)
 
 # Serve static frontend
-app.mount("/src", StaticFiles(directory="src"), name="src")
-app.mount("/presets", StaticFiles(directory="presets"), name="presets")
+app.mount("/src", StaticFiles(directory=BASE_DIR / "src"), name="src")
+app.mount("/presets", StaticFiles(directory=BASE_DIR / "presets"), name="presets")
 
 
 @app.get("/")
@@ -46,7 +46,7 @@ async def get():
 
 @app.get("/favicon.ico")
 async def favicon():
-    return FileResponse("src/favicon.ico", media_type="image/x-icon")
+    return FileResponse(BASE_DIR / "src" / "favicon.ico", media_type="image/x-icon")
 
 
 MAX_TEXT_CHARS = 2000
