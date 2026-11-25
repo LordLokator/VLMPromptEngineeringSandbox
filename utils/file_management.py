@@ -28,9 +28,7 @@ def full_path(path: str) -> str:
 
 
 def makedir(path: str) -> NoneType:
-    path = full_path(path)
-    if not os.path.exists(path):
-        os.mkdir(path)
+    os.makedirs(full_path(path), exist_ok=True)
 
 
 def delete_files(files: list[str]):

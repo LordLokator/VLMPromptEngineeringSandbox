@@ -99,7 +99,6 @@ def test_recorder_paces_once_by_timestamp(monkeypatch, tmp_path):
 
     monkeypatch.setattr(clip_handling, "get_stream_source", fake_source)
     monkeypatch.setattr(clip_handling, "write_video", fake_write)
-    monkeypatch.setattr(clip_handling, "BASE_DIR", tmp_path)
     rec = ClipRecorder(buffer_seconds=0.3, fps=10)
     rec.out_dir = str(tmp_path)
     done = threading.Event()
@@ -286,3 +285,19 @@ def test_open_failure_calls_on_error_once(monkeypatch, tmp_path):
     rec.start(on_error=errors.append)
     rec._thread.join(5)
     assert len(errors) == 1 and "Failed to open" in errors[0]
+
+
+def test_video_feed_ends_cleanly_on_open_failure(monkeypatch, tmp_path):
+    monkeypatch.setattr(streaming, "VIDEO_PATHS", [str(tmp_path / "missing.mp4")])
+    monkeypatch.setattr(streaming, "VIDEO_IDX", 0)
+    monkeypatch.setitem(streaming.USE_LIVE_CAMERA, "value", False)
+    assert list(streaming.video_stream_generator()) == []
+
+
+def test_makedir_nested_and_idempotent(tmp_path):
+    from utils.file_management import makedir
+
+    target = str(tmp_path / "a" / "b")
+    makedir(target)
+    makedir(target)
+    assert Path(target).is_dir()

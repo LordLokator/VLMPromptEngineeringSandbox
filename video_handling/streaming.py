@@ -98,12 +98,17 @@ def video_stream_generator():
 
     if stream is None:
         return
-    for frame in stream:
-        # Check if mode changed mid-stream
-        if USE_LIVE_CAMERA["value"] != current_mode:
-            logger.info("Stream mode changed — switching generator")
-            return  # Kill generator
+    try:
+        for frame in stream:
+            # Check if mode changed mid-stream
+            if USE_LIVE_CAMERA["value"] != current_mode:
+                logger.info("Stream mode changed — switching generator")
+                return  # Kill generator
 
-        _, jpeg = cv2.imencode('.jpg', frame)
-        yield (b'--frame\r\n'
-               b'Content-Type: image/jpeg\r\n\r\n' + jpeg.tobytes() + b'\r\n')
+            _, jpeg = cv2.imencode('.jpg', frame)
+            yield (b'--frame\r\n'
+                   b'Content-Type: image/jpeg\r\n\r\n' + jpeg.tobytes() + b'\r\n')
+    except RuntimeError as e:
+        logger.error(f"Video feed ended: {e}")
+    finally:
+        stream.close()
