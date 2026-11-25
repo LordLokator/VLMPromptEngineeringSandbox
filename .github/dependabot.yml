@@ -10,6 +10,9 @@ updates:
     groups:
       python-minor-patch:
         update-types: [minor, patch]
+      # SDK, exporter and instrumentation are one matched release train (otel extra in pyproject.toml).
+      opentelemetry:
+        patterns: ["opentelemetry-*"]
     ignore:
       # GPU stack is pinned together (VideoLLaMA3 remote code); bump by hand after a GPU smoke
       # test. All update types are ignored: torch 2.2 -> 2.15 counts as a *minor* bump, so a

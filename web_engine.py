@@ -12,6 +12,7 @@ from loguru import logger
 import threading
 import uvicorn
 
+from utils import telemetry
 from utils.file_management import BASE_DIR
 from video_handling.streaming import video_stream_generator, USE_LIVE_CAMERA
 
@@ -89,6 +90,7 @@ async def websocket_endpoint(ws: WebSocket):
 
     await ws.accept()
     active_connections.append(ws)
+    telemetry.ws_connection(1)
 
     try:
         while True:
@@ -99,6 +101,7 @@ async def websocket_endpoint(ws: WebSocket):
                 await ws.send_text(json.dumps(emit("error", err)))
                 continue
             role = msg.get("role")
+            telemetry.record_ws_message(role)
             text = msg.get("text", "")
             logger.debug(f"Received msg: role={role!r} text={text[:80]!r}")
             temperature = msg.get("temperature", None)
@@ -142,6 +145,7 @@ async def websocket_endpoint(ws: WebSocket):
     except WebSocketDisconnect:
         logger.info("Client disconnected")
     finally:
+        telemetry.ws_connection(-1)
         if ws in active_connections:
             active_connections.remove(ws)
 
@@ -230,6 +234,7 @@ def start_server_threaded(prompt=None, settings=None) -> uvicorn.Server:
 
     app.state.prompt = prompt
     app.state.settings = settings
+    telemetry.setup_telemetry(app)
 
     server = make_server()
     threading.Thread(target=server.run, daemon=True).start()

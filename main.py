@@ -10,6 +10,7 @@ from loguru import logger
 from concurrent.futures import ThreadPoolExecutor
 
 from prompting.prompting import Prompt, RuntimeSettings
+from utils import telemetry
 from utils.backends import make_backend
 from web_engine import start_server_threaded, broadcast_sync, emit
 from video_handling.clip_handling import ClipRecorder
@@ -38,12 +39,15 @@ def process_clip(
     try:
         start = timeit.default_timer()
 
-        output, _temperature = vlm.forward(
-            video_path=clip_path,
-            fps=get_fps(),
-            max_frames=max_frames,
-            temperature=get_temperature()
-        )
+        fps, temperature = get_fps(), get_temperature()
+        backend = getattr(vlm, "name", type(vlm).__name__)
+        with telemetry.inference(backend, fps, max_frames, temperature):
+            output, _temperature = vlm.forward(
+                video_path=clip_path,
+                fps=fps,
+                max_frames=max_frames,
+                temperature=temperature
+            )
 
         delay = timeit.default_timer() - start
 
@@ -81,6 +85,7 @@ def make_clip_handler(
         nonlocal dropped
         if not busy.acquire(blocking=False):
             dropped += 1
+            telemetry.record_drop()
             logger.warning(f"Inference busy, dropping clip (dropped so far: {dropped}): {clip_path}")
             Path(clip_path).unlink(missing_ok=True)
             return

@@ -1,4 +1,60 @@
-# Tooling config only (this repo is not an installable package).
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "vlm-prompt-engineering-sandbox"
+version = "0.1.0"
+description = "Web UI for live prompt editing against a Video-LLM (VideoLLaMA3-7B) on short video clips."
+readme = "README.md"
+license = "MIT"
+requires-python = ">=3.11"
+# Web layer only (uvicorn[standard] brings the websockets library needed for /ws).
+dependencies = [
+    "fastapi",
+    "uvicorn[standard]",
+    "loguru",
+]
+
+[project.optional-dependencies]
+# Full runtime for the real model. Needs a CUDA GPU; install with `pip install ".[gpu]"`.
+# The transformers/torch/numpy pins are a coupled set (VideoLLaMA3 remote code): bump only
+# after a GPU smoke test. numpy 1.24.4 has no wheels for Python >= 3.12.
+gpu = [
+    "transformers==4.46.3",
+    "torch==2.2.0",
+    "numpy==1.24.4",
+    "accelerate",
+    "decord",
+    "opencv-python",
+    "ffmpeg-python",
+    "imageio-ffmpeg",
+    "imageio",
+]
+# Optional OpenTelemetry traces/metrics (OTEL_ENABLED=1, see README). Not needed to run the app.
+# SDK and OTLP exporter are one release train (1.45.2); the FastAPI instrumentation is beta-only
+# (0.66b2) and must match that train. Versions checked on PyPI 2026-11-25. Bump them together.
+otel = [
+    "opentelemetry-sdk==1.45.2",
+    "opentelemetry-exporter-otlp==1.45.2",
+    "opentelemetry-instrumentation-fastapi==0.66b2",
+]
+# Tests and lint, GPU-free (no torch, transformers, flash-attn or decord). numpy is unpinned
+# because tests do not depend on its version and the gpu pin has no 3.12 wheels.
+dev = [
+    "ruff",
+    "pytest",
+    "httpx",                  # required by Starlette's TestClient
+    "pyyaml",                 # tests/test_workflows.py: workflow/dependabot structure test
+    "opencv-python-headless", # CI runners lack libGL; do not use opencv-python here
+    "numpy",
+    "opentelemetry-sdk",      # tests/test_telemetry.py: in-memory span/metric exporters
+]
+
+# Not a library: the extras above are the point, so install no packages from this repo.
+[tool.setuptools]
+packages = []
+
 [tool.ruff]
 line-length = 120
 extend-exclude = [".local", "VideoLLaMA3"]

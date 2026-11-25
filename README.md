@@ -209,12 +209,28 @@ Prompt history stored in:
 No GPU needed; the model code is isolated in `utils/vlm_wrapper.py` and mocked in tests.
 
 ```
-pip install -r requirements-dev.txt
+pip install ".[dev]"
 pytest -q
 ruff check .
 ```
 
 CI (`.github/workflows/ci.yml`) runs lint, compile check and tests on Python 3.11 and 3.12, plus a dependency-resolution check.
+
+### Observability (optional OpenTelemetry)
+
+Off by default; nothing from `opentelemetry` is imported unless enabled.
+
+```
+pip install ".[otel]"
+OTEL_ENABLED=1 python main.py                       # spans + metrics printed to the console
+OTEL_ENABLED=1 OTEL_TRACES_EXPORTER=otlp OTEL_METRICS_EXPORTER=otlp   OTEL_EXPORTER_OTLP_ENDPOINT=http://localhost:4317 python main.py   # any OTLP/gRPC collector
+```
+
+Recorded: a `vlm.inference` span per clip (backend, fps, max frames, temperature; ERROR status on failure),
+metrics `vlm.inference.duration`, `vlm.inference.errors`, `vlm.clips.dropped` (clips skipped while inference is busy),
+`ws.connections`, `ws.messages`, and the FastAPI HTTP metrics/spans (`/video_feed` and per-message WebSocket spans excluded).
+Prompt text, model output, clip paths and frames are never recorded. Also honours `OTEL_SERVICE_NAME` and
+`OTEL_METRIC_EXPORT_INTERVAL` (default 60 s for the console metrics). Tested with in-memory exporters only; no collector was run.
 
 ----
 
