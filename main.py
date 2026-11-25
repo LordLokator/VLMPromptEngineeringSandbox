@@ -102,11 +102,17 @@ def make_clip_handler(
     return on_clip_flush
 
 
-def shutdown(recorder, executor: ThreadPoolExecutor, server, busy: threading.Lock, timeout: float = 5.0) -> None:
-    """Stop capturing first, let the in-flight inference finish (bounded), then stop the web server."""
+def shutdown(
+    recorder, executor: ThreadPoolExecutor | None, server, busy: threading.Lock, timeout: float = 5.0
+) -> None:
+    """Stop capturing first, let the in-flight inference finish (bounded), then stop the web server.
+
+    `executor` is None when a stop signal arrived before the backend finished loading.
+    """
     logger.info("Shutting down...")
     recorder.stop()
-    executor.shutdown(wait=False, cancel_futures=True)
+    if executor is not None:
+        executor.shutdown(wait=False, cancel_futures=True)
     if busy.acquire(timeout=timeout):
         busy.release()
     else:
@@ -117,37 +123,8 @@ def shutdown(recorder, executor: ThreadPoolExecutor, server, busy: threading.Loc
 def main():
     logger.info("Main app initialization...")
 
-    # Create shared Prompt object
-    prompt = Prompt()
-    settings = RuntimeSettings(clip_fps=FPS)
-
-    # Start server in separate thread
-    server = start_server_threaded(prompt, settings)
-
-    # Create Video stream
-    recorder = ClipRecorder(
-        buffer_seconds=SEC,
-        fps=FPS
-    )
-
-    # Instantiate the backend (VLM_BACKEND, default: local HF model)
-    vlm = make_backend(prompt)
-
-    executor = ThreadPoolExecutor(max_workers=1)
-    process = partial(
-        process_clip,
-        vlm=vlm,
-        broadcast=broadcast_sync,
-        get_temperature=settings.get_temperature,
-        get_fps=settings.get_resample_fps,
-        max_frames=MAX_FRAMES,
-    )
-
-    busy = threading.Lock()
-    on_clip_flush = make_clip_handler(process, executor, busy)
-
-    recorder.start(flush_callback=on_clip_flush, on_error=lambda text: broadcast_sync(emit("error", text)))
-
+    # Install handlers before the slow startup (model load) so Ctrl+C always reaches a clean shutdown.
+    # The handler only sets the event; startup checks it between stages.
     stop_event = threading.Event()
 
     def request_stop(signum, _frame) -> None:
@@ -158,11 +135,43 @@ def main():
         if hasattr(signal, name):
             signal.signal(getattr(signal, name), request_stop)
 
-    # Short timeouts keep the main thread responsive to signals on every platform.
-    while not stop_event.wait(0.5):
-        pass
+    # Create shared Prompt object
+    prompt = Prompt()
+    settings = RuntimeSettings(clip_fps=FPS)
 
-    shutdown(recorder, executor, server, busy)
+    # Start server in separate thread
+    server = start_server_threaded(prompt, settings)
+
+    # Create Video stream (not started yet)
+    recorder = ClipRecorder(
+        buffer_seconds=SEC,
+        fps=FPS
+    )
+
+    executor: ThreadPoolExecutor | None = None
+    busy = threading.Lock()
+    try:
+        # Instantiate the backend (VLM_BACKEND, default: local HF model)
+        vlm = make_backend(prompt)
+
+        if not stop_event.is_set():
+            executor = ThreadPoolExecutor(max_workers=1)
+            process = partial(
+                process_clip,
+                vlm=vlm,
+                broadcast=broadcast_sync,
+                get_temperature=settings.get_temperature,
+                get_fps=settings.get_resample_fps,
+                max_frames=MAX_FRAMES,
+            )
+            on_clip_flush = make_clip_handler(process, executor, busy)
+            recorder.start(flush_callback=on_clip_flush, on_error=lambda text: broadcast_sync(emit("error", text)))
+
+        # Short timeouts keep the main thread responsive to signals on every platform.
+        while not stop_event.wait(0.5):
+            pass
+    finally:
+        shutdown(recorder, executor, server, busy)
 
 
 if __name__ == "__main__":

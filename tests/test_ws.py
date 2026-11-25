@@ -92,3 +92,11 @@ def test_connection_removed_after_close(client):
         ws.send_text("{bad")
         ws.receive_json()
     assert web_engine.active_connections == []
+
+
+def test_server_caps_raw_frame_size():
+    # TestClient bypasses uvicorn, so assert the cap is wired into the real server config.
+    config = web_engine.make_server().config
+    assert config.ws_max_size == web_engine.WS_MAX_BYTES
+    assert web_engine.WS_MAX_BYTES < 16 * 1024 * 1024
+    assert web_engine.WS_MAX_BYTES > web_engine.MAX_TEXT_CHARS * 4  # UTF-8 worst case still fits

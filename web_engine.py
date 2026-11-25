@@ -51,6 +51,9 @@ async def favicon():
 
 
 MAX_TEXT_CHARS = 2000
+# Raw frame cap in bytes. uvicorn closes the socket (code 1009) on larger frames before they are
+# parsed; its default is 16 MiB. 64 KiB leaves room for the 2000-char text plus JSON overhead.
+WS_MAX_BYTES = 64 * 1024
 
 
 def emit(kind: str, text: str, **extra: float) -> dict:
@@ -200,7 +203,8 @@ async def post_preset(request: Request):
 def make_server() -> uvicorn.Server:
     if not IS_LOOPBACK:
         logger.warning(f"Binding to {HOST}: the server has no authentication, anyone on the network can use it.")
-    return uvicorn.Server(uvicorn.Config("web_engine:app", host=HOST, port=PORT, reload=False))
+    config = uvicorn.Config("web_engine:app", host=HOST, port=PORT, reload=False, ws_max_size=WS_MAX_BYTES)
+    return uvicorn.Server(config)
 
 
 def broadcast_sync(msg: dict, timeout: float = 5.0) -> None:

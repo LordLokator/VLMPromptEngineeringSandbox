@@ -137,3 +137,40 @@ def test_shutdown_gives_up_on_stuck_inference():
     srv = Srv()
     shutdown(Noop(), Noop(), srv, busy, timeout=0.1)
     assert srv.should_exit is True
+
+
+def test_signal_during_backend_load_exits_cleanly(monkeypatch):
+    """Handlers are installed before the slow load; a signal then skips the recorder and still shuts down."""
+    import signal
+    import main as app_main
+
+    handlers = {}
+    monkeypatch.setattr(app_main.signal, "signal", lambda sig, fn: handlers.__setitem__(sig, fn))
+    events = []
+
+    class Server:
+        should_exit = False
+
+    class Recorder:
+        def __init__(self, **_):
+            pass
+
+        def start(self, **_):
+            events.append("start")
+
+        def stop(self):
+            events.append("stop")
+
+    def slow_load(_prompt):
+        handlers[signal.SIGINT](signal.SIGINT, None)  # Ctrl+C while the model "loads"
+        return object()
+
+    server = Server()
+    monkeypatch.setattr(app_main, "start_server_threaded", lambda *_: server)
+    monkeypatch.setattr(app_main, "ClipRecorder", Recorder)
+    monkeypatch.setattr(app_main, "make_backend", slow_load)
+
+    app_main.main()
+
+    assert events == ["stop"]
+    assert server.should_exit is True

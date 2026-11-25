@@ -74,6 +74,10 @@ Browser UI
 
 Stack: FastAPI + uvicorn (WebSocket at `/ws`), OpenCV, vanilla JS frontend.
 
+Code map: `main.py` (wiring, shutdown) and `web_engine.py` (HTTP + `/ws`); `utils/backends.py` picks the
+backend and `utils/vlm_wrapper.py` is the only module that touches torch; `video_handling/` captures
+and buffers clips; `prompting/` holds prompt state and history; `src/` is the frontend.
+
 ----
 
 ## Known Limitations
@@ -81,6 +85,16 @@ Stack: FastAPI + uvicorn (WebSocket at `/ws`), OpenCV, vanilla JS frontend.
 - The browser stream and the clip the VLM sees come from separate decoders at different positions, so they are not synchronised.
 
 - No authentication; intended for localhost use only.
+
+- Needs a CUDA GPU; there is no CPU fallback. The tests run without one (model mocked).
+
+- While the model is busy, new clips are dropped (logged and counted in telemetry; the UI does not show it yet).
+
+- Memory and latency numbers above are author-reported, not measured by CI.
+
+- The `gpu` extra pins an old torch/transformers/numpy set (needs Python 3.11); upgrading it requires a GPU smoke test.
+
+- WebSocket frames over 64 KiB are rejected (the connection is closed); prompt text is capped at 2000 characters.
 
 ----
 
@@ -161,6 +175,8 @@ Environment variables (all optional):
 | `VLM_HOST` | `127.0.0.1` | Bind address. Anything non-loopback logs a warning (no authentication) and disables the API docs. |
 | `VLM_PORT` | `8000` | Port. |
 | `VLM_ATTN_IMPL` | `flash_attention_2` | Attention implementation passed to the model. Other values are untested. |
+| `VLM_BACKEND` | `hf` | Inference backend, resolved by `utils/backends.py`. Only `hf` (the local VideoLLaMA3 model) exists; any other value fails at startup. `ChainBackend` (try backends in order) is in the code but not selectable yet. |
+| `OTEL_*` | off | Optional telemetry, see Observability below (`OTEL_ENABLED` switches it on). |
 
 The WebSocket rejects cross-site browser origins. There is no authentication, so keep it on localhost.
 
