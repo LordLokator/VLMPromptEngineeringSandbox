@@ -10,9 +10,6 @@ const CHAT_ROLES = ["user", "system", "vlm", "error"];
 const presetBar = document.getElementById("presetBar");
 const saveBtn = document.getElementById("savePresetBtn");
 
-const pastelColors = ["#FF6633", "#FFB399", "#FF33FF", "#FFFF99", "#00B3E6", "#E6B333", "#3366E6", "#999966", "#809980", "#E6FF80", "#1AFF33", "#999933", "#FF3380", "#CCCC00", "#66E64D", "#4D80CC", "#FF4D4D", "#99E6E6", "#6666FF"
-];
-
 function handleServerMessage(data) {
     // Accepted shapes: new {type: 'vlm'|'error'|'system', text, delay?},
     // legacy {output, delay, status}, legacy {status: 'ERROR', msg}, legacy {role, text}.
