@@ -70,8 +70,8 @@ class ClipRecorder:
                 logger.debug(f"Calling flush_callback with: {full_pathname}")
                 self.flush_callback(full_pathname)
 
-            except Exception as e:
-                logger.error(f"Video writing or callback failed: {e}")
+            except Exception as e:  # noqa: BLE001 - worker boundary: logged, the recorder keeps running
+                logger.exception(f"Video writing or callback failed: {e}")
 
     def start(
             self,
