@@ -10,7 +10,7 @@ from loguru import logger
 from concurrent.futures import ThreadPoolExecutor
 
 from prompting.prompting import Prompt, RuntimeSettings
-from utils.vlm_wrapper import VLM
+from utils.backends import make_backend
 from web_engine import start_server_threaded, broadcast_sync, emit
 from video_handling.clip_handling import ClipRecorder
 
@@ -123,8 +123,8 @@ def main():
         fps=FPS
     )
 
-    # Instantiate VLM
-    vlm = VLM(prompt)
+    # Instantiate the backend (VLM_BACKEND, default: local HF model)
+    vlm = make_backend(prompt)
 
     executor = ThreadPoolExecutor(max_workers=1)
     process = partial(

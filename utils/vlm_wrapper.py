@@ -20,6 +20,8 @@ ATTN_IMPL = os.environ.get("VLM_ATTN_IMPL", "flash_attention_2")
 
 
 class VLM:
+    name = "hf/VideoLLaMA3-7B"
+
     def __init__(self, prompt: Prompt):
         import torch
         from transformers import AutoModelForCausalLM, AutoProcessor
