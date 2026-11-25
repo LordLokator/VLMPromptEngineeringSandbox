@@ -2,10 +2,12 @@ import importlib
 import subprocess
 import sys
 import types
+from typing import cast
 
 import pytest
 
 from utils import vlm_wrapper
+from prompting.prompting import Prompt
 from utils.vlm_wrapper import VLM
 
 
@@ -41,7 +43,7 @@ class FakePrompt:
 def make_vlm(processor):
     vlm = object.__new__(VLM)  # skip __init__: it loads the real model
     vlm.sys_prompt = "sys"
-    vlm.prompt_obj = FakePrompt()
+    vlm.prompt_obj = cast(Prompt, FakePrompt())
     vlm.model = FakeModel()
     vlm.processor = processor
     return vlm

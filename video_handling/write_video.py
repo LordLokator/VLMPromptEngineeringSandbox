@@ -13,7 +13,7 @@ def write_video(frames: list[np.ndarray], video_path: str, fps: int = 60):
     try:
         writer = cv2.VideoWriter(
             video_path,
-            cv2.VideoWriter_fourcc('m', 'p', '4', 'v'),
+            cv2.VideoWriter.fourcc('m', 'p', '4', 'v'),
             fps,
             (frames[0].shape[1], frames[0].shape[0])
         )

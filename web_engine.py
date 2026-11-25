@@ -32,8 +32,12 @@ async def lifespan(app: FastAPI):
 
 
 # No auth: expose the interactive API docs only on loopback.
-_docs = {} if IS_LOOPBACK else {"docs_url": None, "redoc_url": None, "openapi_url": None}
-app = FastAPI(lifespan=lifespan, **_docs)
+app = FastAPI(
+    lifespan=lifespan,
+    docs_url="/docs" if IS_LOOPBACK else None,
+    redoc_url="/redoc" if IS_LOOPBACK else None,
+    openapi_url="/openapi.json" if IS_LOOPBACK else None,
+)
 
 # Serve static frontend
 app.mount("/src", StaticFiles(directory=BASE_DIR / "src"), name="src")
@@ -101,7 +105,7 @@ async def websocket_endpoint(ws: WebSocket):
             msg, err = parse_client_message(raw)
             if msg is None:
                 logger.warning(f"Rejected client frame: {err}")
-                await ws.send_text(json.dumps(emit("error", err)))
+                await ws.send_text(json.dumps(emit("error", err or "invalid message")))
                 continue
             role = msg.get("role")
             telemetry.record_ws_message(role)

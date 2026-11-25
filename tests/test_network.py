@@ -3,6 +3,8 @@ import json
 
 import pytest
 from fastapi.testclient import TestClient
+from starlette.routing import Mount
+from starlette.staticfiles import StaticFiles
 from starlette.websockets import WebSocketDisconnect
 
 import web_engine
@@ -59,6 +61,10 @@ def test_paths_do_not_depend_on_cwd(monkeypatch, tmp_path):
 
 
 def test_static_mounts_are_absolute():
-    mounts = {r.path: r.app.directory for r in web_engine.app.routes if r.path in ("/src", "/presets")}
+    mounts = {
+        r.path: r.app.directory
+        for r in web_engine.app.routes
+        if isinstance(r, Mount) and isinstance(r.app, StaticFiles) and r.path in ("/src", "/presets")
+    }
     assert set(mounts) == {"/src", "/presets"}
     assert all(Path(d).is_absolute() for d in mounts.values())

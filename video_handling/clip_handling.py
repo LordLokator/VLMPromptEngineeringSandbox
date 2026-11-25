@@ -13,7 +13,7 @@ from video_handling.streaming import USE_LIVE_CAMERA, get_stream_source
 
 
 class ClipRecorder:
-    def __init__(self, buffer_seconds: int = 3, fps: int = 10):
+    def __init__(self, buffer_seconds: float = 3, fps: int = 10):
         self.buffer_seconds = buffer_seconds
         self.fps = fps
         self.out_dir = str(BASE_DIR / "tmp")

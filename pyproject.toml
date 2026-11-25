@@ -66,3 +66,22 @@ select = ["E", "F", "B", "T20", "BLE", "S104"]
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 pythonpath = ["."]
+
+# Pylance/pyright: resolve imports from a local ./.venv (pip install -e ".[dev,otel]"). torch and
+# transformers are intentionally absent there (GPU extra, imported lazily in utils/vlm_wrapper.py).
+[tool.pyright]
+venvPath = "."
+venv = ".venv"
+exclude = [".local", "VideoLLaMA3", ".venv", "tmp"]
+
+# Tests deliberately pass fakes (FakePrompt, FakeSocket, executor stubs) and invalid values
+# (set_temperature("0.7")) to exercise validation, so argument-type checks add only noise there.
+# Production code keeps the full checks.
+[[tool.pyright.executionEnvironments]]
+root = "tests"
+extraPaths = ["."]
+reportArgumentType = false
+reportCallIssue = false
+
+[[tool.pyright.executionEnvironments]]
+root = "."

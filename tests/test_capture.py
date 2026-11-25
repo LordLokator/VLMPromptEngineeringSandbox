@@ -72,7 +72,7 @@ def test_live_stream_close_releases_capture(monkeypatch):
 
 
 def _write_tiny_mp4(path, n_frames, fps=20):
-    writer = cv2.VideoWriter(str(path), cv2.VideoWriter_fourcc(*"mp4v"), fps, (32, 32))
+    writer = cv2.VideoWriter(str(path), cv2.VideoWriter.fourcc(*"mp4v"), fps, (32, 32))
     for i in range(n_frames):
         writer.write(np.full((32, 32, 3), i * 10 % 255, dtype=np.uint8))
     writer.release()
@@ -270,7 +270,7 @@ def test_stop_joins_thread_and_closes_stream(monkeypatch, tmp_path):
     t0 = time.monotonic()
     rec.stop()
     assert time.monotonic() - t0 < 2
-    assert not rec._thread.is_alive()
+    assert rec._thread is not None and not rec._thread.is_alive()
     assert closed.is_set()
 
 
@@ -283,6 +283,7 @@ def test_open_failure_calls_on_error_once(monkeypatch, tmp_path):
     rec = ClipRecorder(buffer_seconds=0.3, fps=10)
     rec.out_dir = str(tmp_path)
     rec.start(on_error=errors.append)
+    assert rec._thread is not None
     rec._thread.join(5)
     assert len(errors) == 1 and "Failed to open" in errors[0]
 

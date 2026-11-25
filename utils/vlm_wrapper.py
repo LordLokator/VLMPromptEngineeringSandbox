@@ -23,8 +23,8 @@ class VLM:
     name = "hf/VideoLLaMA3-7B"
 
     def __init__(self, prompt: Prompt):
-        import torch
-        from transformers import AutoModelForCausalLM, AutoProcessor
+        import torch  # pyright: ignore[reportMissingImports]  # GPU extra, not installed in dev
+        from transformers import AutoModelForCausalLM, AutoProcessor  # pyright: ignore[reportMissingImports]
 
         self.sys_prompt = "You are a helpful assistant."
         self.prompt_obj = prompt
@@ -59,7 +59,7 @@ class VLM:
         return (output, temperature)
 
     def _forward(self, conversation, temperature=0.01) -> str:
-        import torch
+        import torch  # pyright: ignore[reportMissingImports]  # GPU extra, not installed in dev
 
         processed_inputs = self.processor(
             conversation=conversation,

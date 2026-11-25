@@ -1,11 +1,14 @@
 import time
+from collections.abc import Generator
+
 import cv2
+from cv2.typing import MatLike
 from loguru import logger
 
 from utils.file_management import BASE_DIR
 
 FALLBACK_IMAGE = str(BASE_DIR / "src" / "error.jpeg")
-USE_LIVE_CAMERA = {'value': False}
+USE_LIVE_CAMERA: dict[str, bool] = {'value': False}
 VIDEO_PATHS = [
     str(BASE_DIR / "static_video" / "street_view_1.mp4"),
     str(BASE_DIR / "static_video" / "street_view_2.mp4"),
@@ -13,7 +16,7 @@ VIDEO_PATHS = [
 VIDEO_IDX = 0
 
 
-def static_video(paced: bool = True, sample_fps: float | None = None):
+def static_video(paced: bool = True, sample_fps: float | None = None) -> Generator[MatLike, None, None]:
     """Yield frames of the sample clips, looping forever.
 
     sample_fps: if set, keep one frame per 1/sample_fps seconds of *source* time (frame index / source fps),
@@ -65,7 +68,7 @@ def _init_video_object(path: str) -> tuple[cv2.VideoCapture, float, float]:
     return (cap, fps, delay)
 
 
-def live_stream():
+def live_stream() -> Generator[MatLike, None, None]:
     # Note: the clip recorder and /video_feed each open their own decoder/camera
     # handle; a shared single capture is deliberately not implemented.
     cap = cv2.VideoCapture(0)
@@ -73,6 +76,8 @@ def live_stream():
         if not cap.isOpened():
             logger.warning("Webcam not found. Showing fallback image.")
             fallback = cv2.imread(FALLBACK_IMAGE)
+            if fallback is None:
+                raise RuntimeError(f"Fallback image missing or unreadable: {FALLBACK_IMAGE}")
             while True:
                 yield fallback
                 time.sleep(1 / 5)
@@ -86,7 +91,7 @@ def live_stream():
         cap.release()
 
 
-def get_stream_source(paced: bool = True, sample_fps: float | None = None):
+def get_stream_source(paced: bool = True, sample_fps: float | None = None) -> Generator[MatLike, None, None]:
     """Pick the active source. `paced` and `sample_fps` only affect static video: the clip recorder
     passes paced=False and its own fps because it paces frames itself; live_stream is paced by the camera."""
     return live_stream() if USE_LIVE_CAMERA['value'] else static_video(paced=paced, sample_fps=sample_fps)
