@@ -9,10 +9,10 @@
 
 - **What it does:** cuts a video source into 0.5 s clips, asks the model your current prompt about them, and shows the answers
   next to the video. Change the prompt, temperature or resample FPS while it runs; no restart.
-- **Where it comes from:** a university demo for the Prompt Engineering course (VITMAV82), since **brought up to speed as part
-  of an agentic sweep of my repositories**: audit, bug fixes, hardening, tests, CI and optional OpenTelemetry.
+- **Where it comes from:** a university demo for the Prompt Engineering course (VITMAV82), since **brought up to speed in an
+  LLM-augmented overhaul**: audit, bug fixes, hardening, tests, CI and optional OpenTelemetry.
 - **GPU testing:** the university version ran on **Ubuntu + RTX 4090**. **The current code has not been run on a GPU.**
-  Since the sweep it is verified by lint, compile checks and tests with the model mocked.
+  Since the overhaul it is verified by lint, compile checks and tests with the model mocked.
 - **What it is:** a small proof of concept for one user on localhost. It is not a production service.
 - **Where it is heading:** a generic, model-agnostic app, using **OpenTelemetry** for observability (basic version in place)
   and **LiteLLM** for model routing (not implemented yet). See [Direction](#direction-a-generic-app).
@@ -175,7 +175,7 @@ Measured by the author on Ubuntu + RTX 4090 (24 GB), with the university version
 
 ## Limitations
 
-- **Not re-tested on a GPU** since the sweep, which also changed the model wrapper and the setup script.
+- **Not re-tested on a GPU** since the overhaul, which also changed the model wrapper and the setup script.
 - **Localhost only:** there is no authentication, and settings and source are shared by all connected clients.
 - **Video and answers are not synchronised:** the browser stream and the model's clips come from separate decoders.
 - **No temporal memory:** each 0.5 s clip is answered on its own. Output arrives as a whole message, not token by token.
@@ -275,7 +275,7 @@ controlled sandbox to:
 - observe latency vs. FPS trade-offs,
 - study how a Video-LLM behaves.
 
-The later agentic sweep kept the scope small and made the demo hold up better. Among other things, it fixed a temperature
+The later LLM-augmented overhaul kept the scope small and made the demo hold up better. Among other things, it fixed a temperature
 slider that had no effect, added the resample FPS control, changed the default bind address to localhost, added input
 validation and clean shutdown, and introduced the test suite, CI, the backend seam and OpenTelemetry.
 
