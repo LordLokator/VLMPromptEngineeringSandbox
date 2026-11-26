@@ -182,10 +182,10 @@ Measured by the author on Ubuntu + RTX 4090 (24 GB), with the university version
 - **Old ML stack:** the `gpu` extra pins `torch==2.2.0`, `transformers==4.46.3` and `numpy==1.24.4`, a coupled set required
   by the model's remote code. These versions have known security advisories. An upgrade is planned and will not wait for
   a GPU test.
-- **ML dependency scanning is not working yet:** the dependency scan (osv-scanner, non-blocking) finds no package files.
-  GitHub's dependency graph listed the `torch`, `transformers` and `numpy` pins when checked on 2026-11-26 (no
-  transitive packages), but no Dependabot alert had appeared a few minutes later. Do not read an empty alert list as
-  a sign that these pins are safe.
+- **Dependency scanning reports these advisories but does not block:** osv-scanner reads
+  [`requirements-gpu.txt`](requirements-gpu.txt). On 2026-11-26 it reported 46 findings for the current pins, all in
+  `torch` and `transformers`. The job is `continue-on-error`, so a green check does not mean a clean scan. GitHub showed
+  28 open Dependabot alerts for the same two packages that day, based on the pins in `pyproject.toml`.
 - **Remote code:** the model loads with `trust_remote_code=True`, pinned to a fixed repository revision.
 
 ## Observability (OpenTelemetry)
@@ -258,7 +258,17 @@ pytest -q
 ```
 
 CI runs lint and a compile check, tests on Python 3.11 and 3.12, and a dependency-resolution check of the `gpu` extra.
-Vulnerability scanning of that extra is not working yet (see [Limitations](#limitations)).
+The security workflow scans `requirements-gpu.txt` without blocking (see [Limitations](#limitations)).
+
+`requirements-gpu.txt` is the `gpu` extra (and the base dependencies) resolved for Linux and Python 3.11, so that
+vulnerability scanners can see exact and transitive versions. `pyproject.toml` stays the source of truth, and `setup.sh`
+does not install from this file. It has not been installed or run on a GPU, and it is not the university version's
+environment. After changing dependencies, regenerate it (made with uv 0.11.19; existing versions are kept where they
+still fit, add `--upgrade` to refresh them):
+
+```bash
+uv pip compile pyproject.toml --extra gpu --python-version 3.11 --python-platform x86_64-unknown-linux-gnu -o requirements-gpu.txt
+```
 
 ```
 main.py, web_engine.py   wiring and shutdown; HTTP and /ws
