@@ -14,8 +14,8 @@ updates:
       opentelemetry:
         patterns: ["opentelemetry-*"]
     ignore:
-      # GPU stack is pinned together (VideoLLaMA3 remote code); bump by hand after a GPU smoke
-      # test. All update types are ignored: torch 2.2 -> 2.15 counts as a *minor* bump, so a
+      # GPU stack is pinned together (VideoLLaMA3 remote code); bump the set by hand, never one
+      # package at a time. All update types are ignored: torch 2.2 -> 2.15 counts as a *minor* bump, so a
       # major-only rule let the minor/patch group propose it.
       - dependency-name: torch
       - dependency-name: transformers
