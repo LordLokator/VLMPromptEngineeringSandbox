@@ -33,9 +33,9 @@ jobs:
         with:
           persist-credentials: false
       - uses: google/osv-scanner-action/osv-scanner-action@32d3cd482bdadfb38b186c0ad1b031902d55d932 # v2.7.1
-        # Non-blocking on purpose: the pinned torch/transformers/numpy carry ~50 known advisories, so a
-        # blocking scan would stay red on every PR. Once the ML pins are upgraded (or the unfixable
-        # alerts dismissed), delete the `continue-on-error` line below to make it a gate.
+        # Currently scans nothing: it finds no package files (the pins live in pyproject.toml extras)
+        # and exits 128, which continue-on-error hides. Make the pins visible and deal with their
+        # known advisories before deleting `continue-on-error` to make this a gate.
         continue-on-error: true
         with:
           scan-args: |-

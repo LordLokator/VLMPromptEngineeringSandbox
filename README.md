@@ -180,8 +180,11 @@ Measured by the author on Ubuntu + RTX 4090 (24 GB), with the university version
 - **Video and answers are not synchronised:** the browser stream and the model's clips come from separate decoders.
 - **No temporal memory:** each 0.5 s clip is answered on its own. Output arrives as a whole message, not token by token.
 - **Old ML stack:** the `gpu` extra pins `torch==2.2.0`, `transformers==4.46.3` and `numpy==1.24.4`, a coupled set required
-  by the model's remote code. These versions have known security advisories. Upgrading needs a GPU smoke test, so the
-  dependency scan (osv-scanner) reports without blocking for now.
+  by the model's remote code. These versions have known security advisories. An upgrade is planned and will not wait for
+  a GPU test.
+- **ML dependencies are not scanned yet:** the dependency scan (osv-scanner, non-blocking) currently finds no package
+  files, and GitHub's dependency graph does not list the `gpu` extra. An empty Dependabot alert list therefore says
+  nothing about these pins.
 - **Remote code:** the model loads with `trust_remote_code=True`, pinned to a fixed repository revision.
 
 ## Observability (OpenTelemetry)
@@ -254,6 +257,7 @@ pytest -q
 ```
 
 CI runs lint and a compile check, tests on Python 3.11 and 3.12, and a dependency-resolution check of the `gpu` extra.
+The security workflow's scanners do not cover that extra yet (see [Limitations](#limitations)).
 
 ```
 main.py, web_engine.py   wiring and shutdown; HTTP and /ws

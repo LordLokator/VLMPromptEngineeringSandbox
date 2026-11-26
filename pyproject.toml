@@ -18,8 +18,9 @@ dependencies = [
 
 [project.optional-dependencies]
 # Full runtime for the real model. Needs a CUDA GPU; install with `pip install ".[gpu]"`.
-# The transformers/torch/numpy pins are a coupled set (VideoLLaMA3 remote code): bump only
-# after a GPU smoke test. numpy 1.24.4 has no wheels for Python >= 3.12.
+# The transformers/torch/numpy pins are a coupled set (VideoLLaMA3 remote code): change them
+# together, and say in the README if the new set has not been run on a GPU.
+# numpy 1.24.4 has no wheels for Python >= 3.12.
 gpu = [
     "transformers==4.46.3",
     "torch==2.2.0",
