@@ -30,6 +30,6 @@ updates:
 
 # Caveat: these ignore rules are meant for version updates (GitHub's docs mark `ignore` as also
 # shaping security PRs, but do not rely on it). Alert-driven security PRs (like the
-# torch/transformers ones) are resolved by upgrading or by dismissing the alert (plan U02);
+# torch/transformers ones) are resolved by upgrading or by dismissing the alert;
 # do not rely on editing this file to silence them. `cooldown` applies to version updates only.
 # Keys verified against GitHub's Dependabot options reference (see commit message).

@@ -182,9 +182,10 @@ Measured by the author on Ubuntu + RTX 4090 (24 GB), with the university version
 - **Old ML stack:** the `gpu` extra pins `torch==2.2.0`, `transformers==4.46.3` and `numpy==1.24.4`, a coupled set required
   by the model's remote code. These versions have known security advisories. An upgrade is planned and will not wait for
   a GPU test.
-- **ML dependencies are not scanned yet:** the dependency scan (osv-scanner, non-blocking) currently finds no package
-  files, and GitHub's dependency graph does not list the `gpu` extra. An empty Dependabot alert list therefore says
-  nothing about these pins.
+- **ML dependency scanning is not working yet:** the dependency scan (osv-scanner, non-blocking) finds no package files.
+  GitHub's dependency graph listed the `torch`, `transformers` and `numpy` pins when checked on 2026-11-26 (no
+  transitive packages), but no Dependabot alert had appeared a few minutes later. Do not read an empty alert list as
+  a sign that these pins are safe.
 - **Remote code:** the model loads with `trust_remote_code=True`, pinned to a fixed repository revision.
 
 ## Observability (OpenTelemetry)
@@ -257,7 +258,7 @@ pytest -q
 ```
 
 CI runs lint and a compile check, tests on Python 3.11 and 3.12, and a dependency-resolution check of the `gpu` extra.
-The security workflow's scanners do not cover that extra yet (see [Limitations](#limitations)).
+Vulnerability scanning of that extra is not working yet (see [Limitations](#limitations)).
 
 ```
 main.py, web_engine.py   wiring and shutdown; HTTP and /ws
