@@ -145,3 +145,18 @@ def test_no_prompt_text_in_telemetry(otel):
     dump = repr([s.attributes for s in exporter.get_finished_spans()]) + repr(points(reader))
     assert PROMPT not in dump
     assert "c.mp4" not in dump
+
+
+def test_exception_text_stays_out_of_telemetry(otel):
+    # Real decode/model errors quote the clip path (and could quote the prompt).
+    class LeakyVLM(FakeVLM):
+        def forward(self, video_path, fps, max_frames, temperature):
+            raise OSError(f"cannot decode {video_path} for {PROMPT}")
+
+    exporter, reader = otel
+    run(LeakyVLM())
+    (span,) = exporter.get_finished_spans()
+    assert span.attributes["error.type"] == "OSError"
+    dump = span.to_json() + repr(points(reader))
+    assert PROMPT not in dump
+    assert "c.mp4" not in dump

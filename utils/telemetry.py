@@ -109,14 +109,25 @@ def inference(backend: str, fps: int, max_frames: int, temperature: float) -> It
     outcome = "error"
     start = time.perf_counter()
     try:
-        with state.tracer.start_as_current_span("vlm.inference", attributes=attrs) as span:
+        # The SDK's default error handling copies the exception message and stack trace onto the span, and
+        # those can quote clip paths or prompt text. Record the exception type only.
+        with state.tracer.start_as_current_span(
+            "vlm.inference", attributes=attrs, record_exception=False, set_status_on_exception=False
+        ) as span:
 
             def set_backend(name: str) -> None:
                 nonlocal backend
                 backend = name
                 span.set_attribute("vlm.backend", name)
 
-            yield set_backend
+            try:
+                yield set_backend
+            except Exception as e:
+                from opentelemetry.trace import Status, StatusCode
+
+                span.set_attribute("error.type", type(e).__name__)
+                span.set_status(Status(StatusCode.ERROR, type(e).__name__))
+                raise
         outcome = "ok"
     finally:
         state.duration.record(time.perf_counter() - start, {"vlm.backend": backend, "outcome": outcome})

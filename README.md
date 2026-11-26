@@ -205,7 +205,7 @@ OTEL_ENABLED=1 OTEL_TRACES_EXPORTER=otlp OTEL_METRICS_EXPORTER=otlp \
 
 | Signal | Name | Notes |
 |---|---|---|
-| Span | `vlm.inference` | One per processed clip: backend, FPS, max frames, temperature; error status on failure. |
+| Span | `vlm.inference` | One per processed clip: backend, FPS, max frames, temperature; on failure, error status and exception type (no message or stack trace). |
 | Histogram | `vlm.inference.duration` | Seconds, by backend and outcome. |
 | Counter | `vlm.inference.errors` | By backend. |
 | Counter | `vlm.clips.dropped` | Clips skipped while inference was busy. |
@@ -214,7 +214,8 @@ OTEL_ENABLED=1 OTEL_TRACES_EXPORTER=otlp OTEL_METRICS_EXPORTER=otlp \
 | FastAPI instrumentation | HTTP spans and metrics | `/video_feed` and per-message WebSocket spans are excluded. |
 
 The app's own spans and metrics never include prompt text, model output, clip paths or frames. `OTEL_SERVICE_NAME` and
-`OTEL_METRIC_EXPORT_INTERVAL` are honoured. **Tested with in-memory exporters only; not yet run against a collector.**
+`OTEL_METRIC_EXPORT_INTERVAL` are honoured. Besides the in-memory exporter tests, every signal in the table was checked
+once against `grafana/otel-lgtm:0.41.1` on 2026-11-26 with a mocked backend, over OTLP/gRPC.
 
 ## Direction: a generic app
 
@@ -224,7 +225,7 @@ or remote, with comparable latency and error data for each.
 | Piece | Role | Status |
 |---|---|---|
 | Backend seam (`VLM_BACKEND`) | One interface for any model | In place; only `hf` is selectable. A `ChainBackend` failover class exists and is tested, but is not selectable yet. |
-| OpenTelemetry | Vendor-neutral traces and metrics, labelled by backend | App-level instrumentation in place; collector run pending. |
+| OpenTelemetry | Vendor-neutral traces and metrics, labelled by backend | App-level instrumentation in place; checked against a local collector with a mocked backend. |
 | LiteLLM | Routing and failover across providers and self-hosted servers | **Planned, not implemented.** |
 
 Known hurdles for LiteLLM:
