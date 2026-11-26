@@ -15,8 +15,9 @@ updates:
         patterns: ["opentelemetry-*"]
     ignore:
       # GPU stack is pinned together (VideoLLaMA3 remote code); bump the set by hand, never one
-      # package at a time. All update types are ignored: torch 2.2 -> 2.15 counts as a *minor* bump, so a
-      # major-only rule let the minor/patch group propose it.
+      # package at a time (nothing here can test a bump on a GPU). All update types are ignored: a torch
+      # bump such as 2.2 -> 2.15 counts as *minor*, so a major-only rule let the minor/patch group propose
+      # it. These name-only entries block security-update PRs too: see the note at the end of this file.
       - dependency-name: torch
       - dependency-name: transformers
       - dependency-name: numpy
@@ -28,8 +29,11 @@ updates:
       actions:
         patterns: ["*"]
 
-# Caveat: these ignore rules are meant for version updates (GitHub's docs mark `ignore` as also
-# shaping security PRs, but do not rely on it). Alert-driven security PRs (like the
-# torch/transformers ones) are resolved by upgrading or by dismissing the alert;
-# do not rely on editing this file to silence them. `cooldown` applies to version updates only.
+# Security updates: the name-only ignore entries above also block Dependabot's security-update PRs.
+# Seen 2026-11-26 for torch and transformers (runs 45773370216 and 45773370154: command "security",
+# ignore ">= 0", result all_versions_ignored). Such failed runs are expected while alerts for these
+# packages stay open; they are not a required check. Alerts are still raised. Resolve them by bumping
+# the pinned set by hand, or by dismissing an alert with a reason. Do not switch these entries to
+# `update-types`: dependabot-core's ignore_condition.rb applies only `versions` to security updates, so
+# single-package security PRs could return. `cooldown` applies to version updates only.
 # Keys verified against GitHub's Dependabot options reference (see commit message).

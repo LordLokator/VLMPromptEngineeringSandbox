@@ -54,7 +54,8 @@ def _ignored(doc: dict[Any, Any]) -> dict[str, dict[Any, Any]]:
 
 
 def test_dependabot_ignores_gpu_stack_entirely() -> None:
-    # An `update-types` filter would let a minor bump (torch 2.2 -> 2.15) through the group.
+    # An `update-types` filter would let a "minor" torch bump through the group, and does not apply to
+    # security updates, which could then open single-package PRs.
     ignored = _ignored(_load(GITHUB / "dependabot.yml"))
     for name in ("torch", "transformers", "numpy"):
         assert name in ignored, name

@@ -11,8 +11,10 @@
   next to the video. Change the prompt, temperature or resample FPS while it runs; no restart.
 - **Where it comes from:** a university demo for the Prompt Engineering course (VITMAV82), since **brought up to speed in an
   LLM-augmented overhaul**: audit, bug fixes, hardening, tests, CI and optional OpenTelemetry.
-- **GPU testing:** the university version ran on **Ubuntu + RTX 4090**. **The current code has not been run on a GPU.**
-  Since the overhaul it is verified by lint, compile checks and tests with the model mocked.
+- **GPU testing:** the university version ran on **Ubuntu + RTX 4090** with `torch==2.2.0`, `transformers==4.46.3`
+  and `numpy==1.24.4`. **Neither the current code nor the current ML pins have been run on a GPU.** The code is verified
+  by lint, compile checks and tests with the model mocked. The new pins also had [CPU-only container
+  checks](#ml-stack-what-was-checked), which do not show that the real model works.
 - **What it is:** a small proof of concept for one user on localhost. It is not a production service.
 - **Where it is heading:** a generic, model-agnostic app, using **OpenTelemetry** for observability (basic version in place)
   and **LiteLLM** for model routing (not implemented yet). See [Direction](#direction-a-generic-app).
@@ -24,8 +26,8 @@
 ## Features
 
 - **Live prompt iteration:** the next clip that goes to the model uses the new prompt.
-- **Runtime controls:** temperature (0.01 to 1.0) and resample FPS (slider 1 to 10). The model processor strides over whole
-  frames, so the effective rates are 1, 2, 3.33, 5 and 10 FPS; the UI reports the one in use.
+- **Runtime controls:** temperature (0.01 to 1.0) and resample FPS (slider 1 to 10). The rate the UI reports is not
+  what the model receives, and 1 FPS fails: see [Limitations](#limitations).
 - **Two sources:** the bundled street videos (default) or a webcam, switched from the UI. The webcam is the one attached to
   the **server** machine, not the browser's.
 - **Presets:** nine built-in street-scene prompts (dominant action, crossing, vehicle types, groups, unusual behaviour,
@@ -37,9 +39,15 @@
 
 ## Quick start
 
-Requires a CUDA GPU with FlashAttention2 support (Ampere or newer; see [Hardware](#hardware-and-performance)) and
-Python 3.11 (inferred from the `numpy==1.24.4` pin, which has no wheels for 3.12 or newer). `setup.sh` is a Bash script,
-and the tested OS is Ubuntu.
+Requirements (the tested OS is Ubuntu, with the university version):
+
+- A CUDA GPU with FlashAttention2 support (Ampere or newer; see [Hardware](#hardware-and-performance)).
+- An NVIDIA driver and toolkit (`nvcc`) for **CUDA 13**: the `torch==2.13.0` Linux wheel on PyPI is a CUDA 13 build,
+  and flash-attn is compiled against it.
+- The system **`ffmpeg` and `ffprobe`** programs (on Ubuntu, the `ffmpeg` package). The model's video loader runs them,
+  and no Python dependency or `setup.sh` installs them.
+- `git`, and **Python 3.11**, the version the dependency checks ran on. The `gpu` extra also resolves on 3.12, but
+  nothing was installed or run there.
 
 ```bash
 git clone https://github.com/LordLokator/VLMPromptEngineeringSandbox VLMDemo
@@ -49,8 +57,15 @@ source .venv/bin/activate
 python main.py
 ```
 
-Open <http://localhost:8000/>. The model is downloaded from Hugging Face at a pinned revision; no VideoLLaMA3 clone is needed.
-Inference starts once the model has loaded, with a placeholder prompt until you send your own.
+**The flash-attn step has not been built for this repository.** `setup.sh` installs it from a pinned upstream commit,
+because the latest PyPI release (2.8.3.post2, checked 2026-11-26) compiles as C++17 while torch 2.13 headers use C++20
+syntax. The build can need a lot of memory: an [upstream report](https://github.com/Dao-AILab/flash-attention/issues/2995)
+on 2.8.3.post1 saw more than 10 GB for a single compile process. flash-attn is the last thing the script installs, so
+if only that step fails, `VLM_ATTN_IMPL=sdpa python main.py` is worth trying (also not run on a GPU).
+
+Open <http://localhost:8000/>. The model repository is downloaded from Hugging Face at a pinned revision and loaded from
+that local snapshot; no VideoLLaMA3 clone is needed. Inference starts once the model has loaded, with a placeholder
+prompt until you send your own.
 
 No GPU? You cannot run the app, but you can run the [tests](#development).
 
@@ -154,7 +169,7 @@ All environment variables are optional.
 |---|---|---|
 | `VLM_HOST` | `127.0.0.1` | Bind address. A non-loopback value logs a warning (there is no authentication) and disables the API docs. |
 | `VLM_PORT` | `8000` | Port. |
-| `VLM_ATTN_IMPL` | `flash_attention_2` | Attention implementation passed to the model. Other values are untested. |
+| `VLM_ATTN_IMPL` | `flash_attention_2` | Attention implementation passed to the model. No value has run on a GPU with the current pins; `sdpa` and `eager` ran only in the [CPU checks](#ml-stack-what-was-checked). |
 | `VLM_BACKEND` | `hf` | Inference backend. Only `hf` (local VideoLLaMA3) exists; any other value fails at startup. |
 | `OTEL_ENABLED`, `OTEL_*` | off | See [Observability](#observability-opentelemetry). |
 
@@ -165,7 +180,8 @@ Files: user presets go to `presets/user_presets.json`, prompt history to `prompt
 Model: [`DAMO-NLP-SG/VideoLLaMA3-7B`](https://huggingface.co/DAMO-NLP-SG/VideoLLaMA3-7B) on HuggingFace Transformers,
 bfloat16, FlashAttention2, on `cuda:0`. No quantization and no CPU fallback.
 
-Measured by the author on Ubuntu + RTX 4090 (24 GB), with the university version:
+Measured by the author on Ubuntu + RTX 4090 (24 GB), with the university version and its pins (`torch==2.2.0`,
+`transformers==4.46.3`, `numpy==1.24.4`). They were not re-measured on the current pins.
 
 | Metric | Value |
 |---|---|
@@ -175,18 +191,48 @@ Measured by the author on Ubuntu + RTX 4090 (24 GB), with the university version
 
 ## Limitations
 
-- **Not re-tested on a GPU** since the overhaul, which also changed the model wrapper and the setup script.
+- **Not run on a GPU** since the overhaul, which changed the model wrapper and the setup script, or since the ML pin
+  upgrade. Loading the real weights and generating real answers are untested.
 - **Localhost only:** there is no authentication, and settings and source are shared by all connected clients.
 - **Video and answers are not synchronised:** the browser stream and the model's clips come from separate decoders.
 - **No temporal memory:** each 0.5 s clip is answered on its own. Output arrives as a whole message, not token by token.
-- **Old ML stack:** the `gpu` extra pins `torch==2.2.0`, `transformers==4.46.3` and `numpy==1.24.4`, a coupled set required
-  by the model's remote code. These versions have known security advisories. An upgrade is planned and will not wait for
-  a GPU test.
-- **Dependency scanning reports these advisories but does not block:** inside its CI job, osv-scanner scans a list
-  resolved from the `gpu` extra in `pyproject.toml`. On 2026-11-26 it reported 46 findings for the current pins, all in
-  `torch` and `transformers`. The scan step is `continue-on-error`, so a green check does not mean a clean scan. GitHub
-  showed 28 open Dependabot alerts for the same two packages that day, based on the pins in `pyproject.toml`.
-- **Remote code:** the model loads with `trust_remote_code=True`, pinned to a fixed repository revision.
+- **Resample FPS is inaccurate, and 1 FPS fails:** for the app's 0.5 s clips (5 frames), slider values 1 to 10 gave
+  the model 0, 1, 1, 2, 2, 3, 3, 4, 4 and 5 frames. The effective rate in the UI's reply assumes a different video
+  loader. At 1, every clip fails with `IndexError`. The old and new pins behave the same; this is not fixed yet.
+- **Remaining advisories:** `transformers==4.57.6`, the newest 4.x release, still has known advisories. On 2026-11-26
+  osv-scanner 2.7.1 reported 6: GHSA-29pf-2h5f-8g72, GHSA-69w3-r845-3855, GHSA-fgcw-684q-jj6r, GHSA-x9r9-c232-4q39,
+  GHSA-xrqw-3rrv-vx5w and PYSEC-2025-217. Each has a fix only in 5.x or lists no fixed version, and 5.x is untried
+  with this model. It reported none for the pinned `torch` and `numpy`. A per-advisory review is still pending.
+  GHSA-x9r9-c232-4q39 concerns `load_custom_generate()`, which model loading does call. The app loads from a snapshot
+  of the pinned revision, which has no `custom_generate/` directory.
+- **Dependency scanning does not block:** inside its CI job, osv-scanner scans a list resolved from the `gpu` extra in
+  `pyproject.toml`. The scan step is `continue-on-error`, so a green check does not mean a clean scan. Dependabot
+  alerts are based on the pins in `pyproject.toml` on the default branch.
+- **Remote code:** the model loads with `trust_remote_code=True`. The app downloads one fixed repository revision and
+  gives the loaders only that local directory. With `transformers==4.57.6`, passing the repository name and `revision=`
+  was not enough: `AutoProcessor` looked up the files that choose which code to run on the `main` branch.
+
+## ML stack: what was checked
+
+The `gpu` extra pins `torch==2.13.0`, `transformers==4.57.6` and `numpy==2.4.6`, a coupled set because of the model's
+remote code. The university version used `torch==2.2.0`, `transformers==4.46.3` and `numpy==1.24.4`.
+
+Checked on 2026-11-26 in Linux Python 3.11 containers **without a GPU**, using CPU torch wheels, the model's code,
+config and tokenizer files at the pinned revision, and **no model weights**:
+
+- **Dependencies:** the set installs and passes `pip check`. The set with PyPI's CUDA wheels resolves (not installed)
+  on Python 3.11 and 3.12.
+- **Remote code:** its classes import, and the config and processor load. This needs a short alias in
+  [`utils/vlm_wrapper.py`](utils/vlm_wrapper.py) for a name that transformers moved.
+- **Video input:** for three clips written by the app's recorder, at each FPS from 1 to 10, the old and new pins gave
+  identical processor output (and the same failure at 1 FPS).
+- **Architecture:** built on the `meta` device with `sdpa` and `eager`, the model's 779 tensor names match the
+  checkpoint index, and so does its total size at `bfloat16`.
+- **Load and generate:** with a **tiny, randomly initialised** copy of the architecture saved locally, the app's own
+  `VLM` class loaded it and generated tokens with `sdpa` and `eager`. The output is meaningless by design.
+
+Not checked: anything on a GPU (CUDA wheels, `device_map` to a GPU, the flash-attn build and `flash_attention_2`),
+loading the real weights, answer quality, VRAM and latency.
 
 ## Observability (OpenTelemetry)
 
@@ -230,9 +276,9 @@ or remote, with comparable latency and error data for each.
 
 Known hurdles for LiteLLM:
 
-- Current LiteLLM releases cannot be installed next to the pinned `transformers==4.46.3` (conflicting `tokenizers`
-  requirements, checked 2026-11-25). It needs an ML stack upgrade, a separate environment, or an older release. If none
-  works well, a plain OpenAI-compatible client behind the same seam is the fallback.
+- On 2026-11-25, current LiteLLM releases could not be installed next to the old `transformers==4.46.3` (conflicting
+  `tokenizers` requirements). This has not been re-checked with the current pins. If LiteLLM does not fit well, a plain
+  OpenAI-compatible client behind the same seam is the fallback.
 - Video support differs between providers and servers. Image-only models would need clips sent as sampled frames.
 - A remote backend sends your video off the machine, so it will be opt-in.
 
@@ -242,7 +288,7 @@ Known hurdles for LiteLLM:
 |---|---|
 | Model | VideoLLaMA3-7B, HuggingFace Transformers, PyTorch, FlashAttention2 |
 | Backend | Python, FastAPI, uvicorn (HTTP and WebSocket), Loguru |
-| Video | OpenCV for capture and encoding, decord in the model's video loading stack |
+| Video | OpenCV for capture and encoding; system ffmpeg decodes clips for the model (its remote code also imports decord) |
 | Frontend | Vanilla JavaScript, Bootstrap CSS (vendored, so no CDN) |
 | Observability | OpenTelemetry SDK, OTLP exporter, FastAPI instrumentation (optional) |
 | Quality | pytest, Ruff, GitHub Actions, gitleaks, osv-scanner, dependency review, Dependabot |
