@@ -182,10 +182,10 @@ Measured by the author on Ubuntu + RTX 4090 (24 GB), with the university version
 - **Old ML stack:** the `gpu` extra pins `torch==2.2.0`, `transformers==4.46.3` and `numpy==1.24.4`, a coupled set required
   by the model's remote code. These versions have known security advisories. An upgrade is planned and will not wait for
   a GPU test.
-- **ML dependency scanning is not working yet:** the dependency scan (osv-scanner, non-blocking) finds no package files.
-  GitHub's dependency graph listed the `torch`, `transformers` and `numpy` pins when checked on 2026-11-26 (no
-  transitive packages), but no Dependabot alert had appeared a few minutes later. Do not read an empty alert list as
-  a sign that these pins are safe.
+- **Dependency scanning reports these advisories but does not block:** inside its CI job, osv-scanner scans a list
+  resolved from the `gpu` extra in `pyproject.toml`. On 2026-11-26 it reported 46 findings for the current pins, all in
+  `torch` and `transformers`. The scan step is `continue-on-error`, so a green check does not mean a clean scan. GitHub
+  showed 28 open Dependabot alerts for the same two packages that day, based on the pins in `pyproject.toml`.
 - **Remote code:** the model loads with `trust_remote_code=True`, pinned to a fixed repository revision.
 
 ## Observability (OpenTelemetry)
@@ -258,7 +258,12 @@ pytest -q
 ```
 
 CI runs lint and a compile check, tests on Python 3.11 and 3.12, and a dependency-resolution check of the `gpu` extra.
-Vulnerability scanning of that extra is not working yet (see [Limitations](#limitations)).
+
+All dependencies are declared in [`pyproject.toml`](pyproject.toml), whose comments describe each group and how to install
+it; no requirements or lock file is committed. The security workflow's osv-scanner job resolves the `gpu` extra (and the
+base dependencies) for Linux and Python 3.11 into a temporary file and scans it without blocking (see
+[Limitations](#limitations)). Unpinned and transitive versions are whatever resolves on that run; they are not the
+university version's environment.
 
 ```
 main.py, web_engine.py   wiring and shutdown; HTTP and /ws
