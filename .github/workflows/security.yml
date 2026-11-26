@@ -32,9 +32,20 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
+      - uses: astral-sh/setup-uv@1db35dd8eee11c5894872e0b383ae6c406cf738d # v10.4.0
+        with:
+          version: "0.11.19"
+          enable-cache: false
+      # osv-scanner does not read pyproject.toml extras, so resolve the gpu extra into a temporary list that
+      # is never committed. It only reads *.txt files with "requirements" in the name, and skips git-ignored
+      # files by default, so do not add this one to .gitignore. If this step fails, the job fails.
+      - name: Resolve the gpu extra from pyproject.toml
+        run: >-
+          uv pip compile pyproject.toml --extra gpu --python-version 3.11
+          --python-platform x86_64-unknown-linux-gnu -o osv-requirements.txt
       - uses: google/osv-scanner-action/osv-scanner-action@32d3cd482bdadfb38b186c0ad1b031902d55d932 # v2.7.1
-        # Reads requirements-gpu.txt (osv-scanner does not read pyproject.toml extras). It reports
-        # known advisories for the torch/transformers pins and exits 1, which continue-on-error hides:
+        # Scans the list generated above. It reports known advisories for the torch/transformers pins
+        # and exits 1, which continue-on-error hides:
         # a green check is not a clean scan, read the log. Deal with the advisories before deleting
         # `continue-on-error` to make this a gate.
         continue-on-error: true

@@ -73,6 +73,28 @@ def test_security_workflow_has_osv_job() -> None:
     assert "osv-scanner" in _load(GITHUB / "workflows" / "security.yml")["jobs"]
 
 
+def test_osv_job_generates_gpu_requirements_before_scanning() -> None:
+    # osv-scanner does not read pyproject.toml extras; without the generated list it finds no packages.
+    job = _load(GITHUB / "workflows" / "security.yml")["jobs"]["osv-scanner"]
+    steps = job["steps"]
+    generate = [i for i, s in enumerate(steps) if "uv pip compile pyproject.toml" in s.get("run", "")]
+    scan = [i for i, s in enumerate(steps) if s.get("uses", "").startswith("google/osv-scanner-action/")]
+    assert len(generate) == 1 and len(scan) == 1
+    assert generate[0] < scan[0]
+    args = steps[generate[0]]["run"].split()
+    assert args[args.index("--extra") + 1] == "gpu"
+    # osv-scalibr's requirements extractor needs a .txt suffix and "requirements" in the file name.
+    name = args[args.index("-o") + 1]
+    assert name.endswith(".txt") and "requirements" in name
+    # Written to the workspace root, which the recursive scan covers.
+    assert "/" not in name
+    assert "./" in steps[scan[0]]["with"]["scan-args"].split()
+    # A failed resolution must fail the job; only the scan itself is non-blocking.
+    assert "continue-on-error" not in job
+    assert "continue-on-error" not in steps[generate[0]]
+    assert steps[scan[0]].get("continue-on-error") is True
+
+
 def test_ci_matrix_covers_311_and_312() -> None:
     jobs = _load(GITHUB / "workflows" / "ci.yml")["jobs"]
     versions = [v for job in jobs.values() for v in job.get("strategy", {}).get("matrix", {}).get("python-version", [])]
