@@ -275,7 +275,9 @@ controlled sandbox to:
 - observe latency vs. FPS trade-offs,
 - study how a Video-LLM behaves.
 
-The later LLM-augmented overhaul kept the scope small and made the demo hold up better. Among other things, it fixed a temperature
+The original version was built in May 2025. The November 2026 overhaul was done using Claude Code.
+
+The overhaul kept the scope small and made the demo hold up better. Among other things, it fixed a temperature
 slider that had no effect, added the resample FPS control, changed the default bind address to localhost, added input
 validation and clean shutdown, and introduced the test suite, CI, the backend seam and OpenTelemetry.
 
