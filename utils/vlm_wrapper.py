@@ -19,6 +19,31 @@ DEVICE = "cuda:0"
 ATTN_IMPL = os.environ.get("VLM_ATTN_IMPL", "flash_attention_2")
 
 
+def _patch_remote_code_compat() -> None:
+    """Restore a name the pinned remote code imports; call before loading anything from the repo.
+
+    image_processing_videollama3.py (at MODEL_REVISION) imports VideoInput from transformers.image_utils
+    and uses it only in a type hint. transformers 4.52 moved it to video_utils.
+    """
+    from transformers import image_utils, video_utils  # pyright: ignore[reportMissingImports]
+
+    if not hasattr(image_utils, "VideoInput"):
+        image_utils.VideoInput = video_utils.VideoInput
+
+
+def _pinned_snapshot() -> str:
+    """Download the model repo at MODEL_REVISION and return the local directory to load from.
+
+    Passing the repo id with revision= is not enough on transformers 4.57.6 (checked 2026-11-26):
+    AutoProcessor looked up processor_config.json and its other discovery files on the main branch,
+    and its auto_map says which code to run; tokenizer loading also queried the repo without a
+    revision. Loading from this directory made no such requests.
+    """
+    from huggingface_hub import snapshot_download  # pyright: ignore[reportMissingImports]
+
+    return snapshot_download(MODEL_PATH, revision=MODEL_REVISION)
+
+
 class VLM:
     name = "hf/VideoLLaMA3-7B"
 
@@ -26,22 +51,22 @@ class VLM:
         import torch  # pyright: ignore[reportMissingImports]  # GPU extra, not installed in dev
         from transformers import AutoModelForCausalLM, AutoProcessor  # pyright: ignore[reportMissingImports]
 
+        _patch_remote_code_compat()
+        model_dir = _pinned_snapshot()
         self.sys_prompt = "You are a helpful assistant."
         self.prompt_obj = prompt
 
         logger.info(f"Attention implementation: {ATTN_IMPL}")
         self.model: Any = AutoModelForCausalLM.from_pretrained(
-            MODEL_PATH,
-            revision=MODEL_REVISION,
+            model_dir,
             trust_remote_code=True,
             device_map={"": DEVICE},
-            torch_dtype=torch.bfloat16,
+            dtype=torch.bfloat16,
             attn_implementation=ATTN_IMPL
         )
 
         self.processor: Any = AutoProcessor.from_pretrained(
-            MODEL_PATH,
-            revision=MODEL_REVISION,
+            model_dir,
             trust_remote_code=True
         )
         logger.info("Instantiated models.")

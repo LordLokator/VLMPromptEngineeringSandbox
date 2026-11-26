@@ -75,6 +75,9 @@ def test_forward_empty_decode_returns_empty_str(fake_torch):
     assert output == ""
 
 
+SNAPSHOT_DIR = "/cache/snapshots/pinned"
+
+
 @pytest.fixture
 def from_pretrained_calls(fake_torch, monkeypatch):
     calls: dict[str, dict] = {}
@@ -85,19 +88,49 @@ def from_pretrained_calls(fake_torch, monkeypatch):
             return object()
         return from_pretrained
 
+    def snapshot_download(repo_id, **kwargs):
+        calls["snapshot"] = {"repo_id": repo_id, **kwargs}
+        return SNAPSHOT_DIR
+
     stub = types.SimpleNamespace(
         AutoModelForCausalLM=types.SimpleNamespace(from_pretrained=recorder("model")),
         AutoProcessor=types.SimpleNamespace(from_pretrained=recorder("processor")),
+        image_utils=types.SimpleNamespace(),
+        video_utils=types.SimpleNamespace(VideoInput=object()),
     )
     monkeypatch.setitem(sys.modules, "transformers", stub)
+    monkeypatch.setitem(sys.modules, "huggingface_hub", types.SimpleNamespace(snapshot_download=snapshot_download))
     return calls
 
 
 def test_model_revision_is_pinned(from_pretrained_calls):
     VLM(FakePrompt())
-    assert from_pretrained_calls["model"]["revision"] == vlm_wrapper.MODEL_REVISION
-    assert from_pretrained_calls["processor"]["revision"] == vlm_wrapper.MODEL_REVISION
+    assert from_pretrained_calls["snapshot"] == {
+        "repo_id": vlm_wrapper.MODEL_PATH,
+        "revision": vlm_wrapper.MODEL_REVISION,
+    }
     assert len(vlm_wrapper.MODEL_REVISION) == 40
+
+
+def test_loaders_only_see_the_pinned_snapshot_dir(from_pretrained_calls):
+    # With a repo id, transformers 4.57.6 looks some files up on the main branch even when revision= is given.
+    VLM(FakePrompt())
+    for name in ("model", "processor"):
+        assert from_pretrained_calls[name]["path"] == SNAPSHOT_DIR, name
+        assert from_pretrained_calls[name]["trust_remote_code"] is True, name
+
+
+def test_remote_code_gets_the_moved_video_input_name(from_pretrained_calls):
+    VLM(FakePrompt())
+    transformers = sys.modules["transformers"]
+    assert transformers.image_utils.VideoInput is transformers.video_utils.VideoInput
+
+
+def test_compat_alias_keeps_an_existing_name(from_pretrained_calls):
+    original = object()
+    sys.modules["transformers"].image_utils.VideoInput = original
+    VLM(FakePrompt())
+    assert sys.modules["transformers"].image_utils.VideoInput is original
 
 
 def test_attn_impl_default_reaches_model(from_pretrained_calls):
