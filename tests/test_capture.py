@@ -285,7 +285,7 @@ def test_open_failure_calls_on_error_once(monkeypatch, tmp_path):
     rec.start(on_error=errors.append)
     assert rec._thread is not None
     rec._thread.join(5)
-    assert len(errors) == 1 and "Failed to open" in errors[0]
+    assert errors == ["Capture source failed: Could not read or decode the data (CaptureError)"]
 
 
 def test_video_feed_ends_cleanly_on_open_failure(monkeypatch, tmp_path):

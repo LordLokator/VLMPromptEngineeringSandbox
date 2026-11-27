@@ -2,9 +2,8 @@
 import os
 from typing import TYPE_CHECKING, Sequence
 
-from loguru import logger
-
 from prompting.prompting import Prompt
+from utils.errors import log_failure
 
 if TYPE_CHECKING:
     from main import VLMLike
@@ -31,7 +30,7 @@ class ChainBackend:
                     video_path=video_path, fps=fps, max_frames=max_frames, temperature=temperature
                 )
             except Exception as e:  # noqa: BLE001 - any backend failure falls through to the next one
-                logger.warning(f"Backend {label} failed: {e}")
+                log_failure(f"Backend {label} failed", e, level="WARNING")
                 last_error = e
                 continue
             self.name = label

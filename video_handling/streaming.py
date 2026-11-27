@@ -1,10 +1,12 @@
 import time
 from collections.abc import Generator
+from pathlib import Path
 
 import cv2
 from cv2.typing import MatLike
 from loguru import logger
 
+from utils.errors import DecodeError, log_failure
 from utils.file_management import BASE_DIR
 
 FALLBACK_IMAGE = str(BASE_DIR / "src" / "error.jpeg")
@@ -14,6 +16,10 @@ VIDEO_PATHS = [
     str(BASE_DIR / "static_video" / "street_view_2.mp4"),
 ]
 VIDEO_IDX = 0
+
+
+class CaptureError(DecodeError, RuntimeError):
+    """A video source or image could not be opened."""
 
 
 def static_video(paced: bool = True, sample_fps: float | None = None) -> Generator[MatLike, None, None]:
@@ -60,8 +66,9 @@ def _init_video_object(path: str) -> tuple[cv2.VideoCapture, float, float]:
     cap = cv2.VideoCapture(path)
     if not cap.isOpened():
         cap.release()
-        logger.error(f"Failed to open static video: {path}")
-        raise RuntimeError(f"Failed to open static video: {path}")
+        name = Path(path).name  # no directories: they name the user and the install location
+        logger.error(f"Failed to open static video: {name}")
+        raise CaptureError(f"Failed to open static video: {name}")
 
     fps = cap.get(cv2.CAP_PROP_FPS) or 30
     delay = 1 / fps
@@ -77,7 +84,7 @@ def live_stream() -> Generator[MatLike, None, None]:
             logger.warning("Webcam not found. Showing fallback image.")
             fallback = cv2.imread(FALLBACK_IMAGE)
             if fallback is None:
-                raise RuntimeError(f"Fallback image missing or unreadable: {FALLBACK_IMAGE}")
+                raise CaptureError(f"Fallback image missing or unreadable: {Path(FALLBACK_IMAGE).name}")
             while True:
                 yield fallback
                 time.sleep(1 / 5)
@@ -114,6 +121,6 @@ def video_stream_generator():
             yield (b'--frame\r\n'
                    b'Content-Type: image/jpeg\r\n\r\n' + jpeg.tobytes() + b'\r\n')
     except RuntimeError as e:
-        logger.error(f"Video feed ended: {e}")
+        log_failure("Video feed ended", e)
     finally:
         stream.close()

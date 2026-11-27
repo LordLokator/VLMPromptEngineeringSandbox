@@ -7,6 +7,7 @@ import time
 from typing import Callable
 from loguru import logger
 
+from utils.errors import log_failure
 from utils.file_management import BASE_DIR, delete_files, full_path
 from video_handling.write_video import write_video
 from video_handling.streaming import USE_LIVE_CAMERA, get_stream_source
@@ -59,10 +60,10 @@ class ClipRecorder:
                         stream = self._open()
                         continue
                     except RuntimeError as e:
-                        logger.error(f"Capture source failed: {e}")
+                        message = log_failure("Capture source failed", e)
                         self.running = False
                         if self.on_error is not None:
-                            self.on_error(f"Capture source failed: {e}")
+                            self.on_error(f"Capture source failed: {message}")
                         return
 
                     # Pace once, by timestamp (the source itself is unpaced here).
@@ -82,7 +83,7 @@ class ClipRecorder:
                     self.flush_callback(full_pathname)
 
                 except Exception as e:  # noqa: BLE001 - worker boundary: logged, the recorder keeps running
-                    logger.exception(f"Video writing or callback failed: {e}")
+                    log_failure("Video writing or callback failed", e)
         finally:
             if stream is not None:
                 stream.close()
