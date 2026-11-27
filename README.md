@@ -111,7 +111,8 @@ Design choices:
   where a file starts over. If timestamps stall or go backwards, the frame rate is used instead (30 FPS if the reported
   one is implausible). A file shorter than a clip holds its last frame. Writing clips happens on another thread.
 - **A failed source stays failed** until a source is selected again (the toggle): a file that yields no frames, a missing
-  webcam, or one that delivers nothing for 3 s. The preview then shows an error image, and no clips are cut from it.
+  webcam, or one whose reads keep failing for 3 s. A camera read that never returns raises no error and delays a switch.
+  After an error the preview shows an error image, and no clips are cut from it.
 - **Each clip knows its moment:** source, source change counter, start and end time and loop number (webcam: wall-clock
   time). A result, answer or error, for a clip from before the last source switch is not shown. The page does not
   display these times yet.
