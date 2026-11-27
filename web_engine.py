@@ -8,17 +8,21 @@ from utils.button_presets import load_presets, load_user_presets, save_user_pres
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect
 from fastapi.responses import JSONResponse, StreamingResponse, FileResponse
 from fastapi.staticfiles import StaticFiles
+from starlette.middleware.trustedhost import TrustedHostMiddleware
 from loguru import logger
 import threading
 import uvicorn
 
 from utils import telemetry
+from utils.hosts import LOOPBACK_HOSTS, parse_allowed_hosts, require_extra_hosts
 from utils.file_management import BASE_DIR
 from video_handling.streaming import video_stream_generator, USE_LIVE_CAMERA
 
 HOST: str = os.environ.get("VLM_HOST", "127.0.0.1")
 PORT: int = int(os.environ.get("VLM_PORT", "8000"))
 IS_LOOPBACK: bool = HOST in ("127.0.0.1", "localhost", "::1")
+# Names served besides the loopback ones. A bad value stops the app at import, before anything starts.
+EXTRA_HOSTS: list[str] = parse_allowed_hosts(os.environ.get("VLM_ALLOWED_HOSTS", ""))
 
 active_connections: list[WebSocket] = []
 
@@ -38,6 +42,10 @@ app = FastAPI(
     redoc_url="/redoc" if IS_LOOPBACK else None,
     openapi_url="/openapi.json" if IS_LOOPBACK else None,
 )
+
+# DNS rebinding: a page on another domain can resolve its name to this machine, and its Origin then matches
+# its Host. Only the names below are served, for HTTP and the WebSocket alike.
+app.add_middleware(TrustedHostMiddleware, allowed_hosts=[*LOOPBACK_HOSTS, *EXTRA_HOSTS], www_redirect=False)
 
 # Serve static frontend
 app.mount("/src", StaticFiles(directory=BASE_DIR / "src"), name="src")
@@ -206,6 +214,7 @@ async def post_preset(request: Request):
 
 def make_server() -> uvicorn.Server:
     if not IS_LOOPBACK:
+        require_extra_hosts(HOST, EXTRA_HOSTS)
         logger.warning(f"Binding to {HOST}: the server has no authentication, anyone on the network can use it.")
     # log_config=None: uvicorn adds no handlers of its own, so its records reach the redacting sink.
     config = uvicorn.Config(

@@ -27,6 +27,7 @@ requires-python = ">=3.11"
 # Base: web layer only (uvicorn[standard] brings the websockets library needed for /ws).
 dependencies = [
     "fastapi",
+    "starlette>=1.7.0",   # TrustedHostMiddleware handles [::1] from 1.7.0 (release notes, 2026-11-27)
     "uvicorn[standard]",
     "loguru",
 ]

@@ -1,7 +1,12 @@
+import os
 import sys
 import types
 
 import pytest
+
+# TestClient sends "Host: testserver"; only this test configuration allows it. Set before web_engine is imported,
+# and overwritten, so a developer's own setting cannot change what the tests see.
+os.environ["VLM_ALLOWED_HOSTS"] = "testserver"
 
 
 class FakeTensor:
