@@ -62,7 +62,7 @@ def test_temperature_reaches_settings(client):
 def test_resample_fps_echoes_effective_rate(client):
     with client.websocket_connect("/ws") as ws:
         ws.send_text(json.dumps({"role": "user", "text": "hi", "resample_fps": 3}))
-        assert "Resample: 3.33 fps" in ws.receive_json()["text"]
+        assert "Resample: 4.00 fps" in ws.receive_json()["text"]
     assert client.settings.get_resample_fps() == 3
 
 

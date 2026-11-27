@@ -50,9 +50,10 @@ class RuntimeSettings:
     MIN_TEMPERATURE = 0.01  # HF generate() with sampling rejects temperature=0
     MAX_TEMPERATURE = 1.0
 
-    def __init__(self, clip_fps: int = 10, temperature: float = 0.01):
+    def __init__(self, clip_fps: int = 10, temperature: float = 0.01, clip_seconds: float = 0.5):
         self._lock = Lock()
         self._clip_fps = int(clip_fps)
+        self._clip_frames = int(clip_seconds * self._clip_fps)  # same count as ClipRecorder writes
         self._temperature = temperature
         self._resample_fps = self._clip_fps
 
@@ -90,9 +91,15 @@ class RuntimeSettings:
         return self.effective_resample_fps(v)
 
     def effective_resample_fps(self, requested: int | None = None) -> float:
-        """The processor strides by floor(clip_fps / fps) frames, so the real rate is clip_fps / that stride."""
+        """Frames the model gets per second of clip.
+
+        Mirrors frame_sample(mode='fps') in the pinned processing_videollama3.py: it takes every stride-th frame,
+        starting half a stride in. The stride is floor(clip_fps / fps), at most the clip's frame count.
+        """
         v = self.get_resample_fps() if requested is None else requested
-        return self._clip_fps / (self._clip_fps // v)
+        stride = min(self._clip_fps // v, self._clip_frames)
+        sampled = len(range(stride // 2, self._clip_frames, stride))
+        return sampled * self._clip_fps / self._clip_frames
 
 
 def get_formatted_time() -> str:

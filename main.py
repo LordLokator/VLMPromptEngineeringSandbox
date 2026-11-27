@@ -149,7 +149,7 @@ def main():
 
     # Create shared Prompt object
     prompt = Prompt()
-    settings = RuntimeSettings(clip_fps=FPS)
+    settings = RuntimeSettings(clip_fps=FPS, clip_seconds=SEC)
 
     # Start server in separate thread
     server = start_server_threaded(prompt, settings)

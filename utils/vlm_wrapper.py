@@ -17,6 +17,10 @@ MODEL_REVISION = "d5b763e368861e7f5096e7ff1b49f92fbccf8ae6"
 DEVICE = "cuda:0"
 # Override e.g. on pre-Ampere GPUs or without flash-attn installed.
 ATTN_IMPL = os.environ.get("VLM_ATTN_IMPL", "flash_attention_2")
+# load_video (processing_videollama3.py at MODEL_REVISION) decodes with decord only when start_time and end_time are
+# given and less than this many seconds apart. Otherwise it runs system ffmpeg, whose fps filter returned no frames
+# for 0.5 s clips at 1 fps.
+DECORD_MAX_SECONDS = 1.0
 
 
 def _patch_remote_code_compat() -> None:
@@ -42,6 +46,23 @@ def _pinned_snapshot() -> str:
     from huggingface_hub import snapshot_download  # pyright: ignore[reportMissingImports]
 
     return snapshot_download(MODEL_PATH, revision=MODEL_REVISION)
+
+
+def _clip_seconds(video_path: str) -> float:
+    """Length of a recorded clip, from its container's frame count and frame rate."""
+    import cv2
+
+    capture = cv2.VideoCapture(video_path)
+    try:
+        frames, fps = capture.get(cv2.CAP_PROP_FRAME_COUNT), capture.get(cv2.CAP_PROP_FPS)
+    finally:
+        capture.release()
+    if frames <= 0 or fps <= 0:
+        raise ValueError(f"Cannot read the length of clip {video_path}")
+    seconds = frames / fps
+    if seconds >= DECORD_MAX_SECONDS:
+        raise ValueError(f"Clip is {seconds:.2f} s long; it must be shorter than {DECORD_MAX_SECONDS:.0f} s")
+    return seconds
 
 
 class VLM:
@@ -127,6 +148,9 @@ class VLM:
                         "type": "video",
                         "video": {
                             "video_path": video_path,
+                            # Both bounds select the loader's decord branch, see DECORD_MAX_SECONDS.
+                            "start_time": 0.0,
+                            "end_time": _clip_seconds(video_path),
                             "fps": fps,
                             "max_frames": max_frames
                         }
