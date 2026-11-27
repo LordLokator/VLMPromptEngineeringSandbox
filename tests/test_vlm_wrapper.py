@@ -4,9 +4,12 @@ import sys
 import types
 from typing import cast
 
+import numpy as np
 import pytest
 
+import main
 from utils import vlm_wrapper
+from video_handling.write_video import write_video
 from prompting.prompting import Prompt
 from utils.vlm_wrapper import VLM
 
@@ -49,11 +52,45 @@ def make_vlm(processor):
     return vlm
 
 
+@pytest.fixture(autouse=True)
+def clip_seconds(request, monkeypatch):
+    if "real_clip" not in request.keywords:
+        monkeypatch.setattr(vlm_wrapper, "_clip_seconds", lambda _path: 0.5)
+
+
+def write_clip(path, frames):
+    write_video([np.zeros((64, 64, 3), dtype=np.uint8)] * frames, str(path), fps=10)
+    return str(path)
+
+
+@pytest.mark.real_clip
+def test_clip_seconds_reads_the_recorded_length(tmp_path):
+    assert vlm_wrapper._clip_seconds(write_clip(tmp_path / "c.mp4", 5)) == pytest.approx(0.5)
+
+
+@pytest.mark.real_clip
+def test_clip_too_long_for_decord_branch_is_an_error(tmp_path):
+    with pytest.raises(ValueError, match="shorter than"):
+        vlm_wrapper._clip_seconds(write_clip(tmp_path / "c.mp4", 10))
+
+
+@pytest.mark.real_clip
+def test_unreadable_clip_is_an_error(tmp_path):
+    with pytest.raises(ValueError, match="Cannot read"):
+        vlm_wrapper._clip_seconds(str(tmp_path / "missing.mp4"))
+
+
+def test_app_clip_length_selects_the_decord_branch():
+    assert main.SEC < vlm_wrapper.DECORD_MAX_SECONDS
+
+
 def test_get_conv_structure():
     conv = make_vlm(None).get_conv("clip.mp4", 10, 20, "p")
     assert conv[0] == {"role": "system", "content": "sys"}
     video, text = conv[1]["content"]
-    assert video["video"] == {"video_path": "clip.mp4", "fps": 10, "max_frames": 20}
+    assert video["video"] == {
+        "video_path": "clip.mp4", "start_time": 0.0, "end_time": 0.5, "fps": 10, "max_frames": 20,
+    }
     assert text == {"type": "text", "text": "p"}
 
 

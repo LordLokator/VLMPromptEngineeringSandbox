@@ -16,7 +16,6 @@ build-backend = "setuptools.build_meta"
 # setuptools, wheel and packaging, from a pinned upstream commit (needs git and a CUDA toolkit). The
 # latest PyPI release (2.8.3.post2, checked 2026-11-26) compiles as C++17, and torch 2.13 headers use
 # C++20 syntax; see setup.sh. The CUDA build has not been run for this repo.
-# Also outside this file: the system ffmpeg and ffprobe programs, which the model's video loader runs.
 
 [project]
 name = "vlm-prompt-engineering-sandbox"
@@ -90,6 +89,7 @@ select = ["E", "F", "B", "T20", "BLE", "S104"]
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 pythonpath = ["."]
+markers = ["real_clip: read the clip length from a real file instead of the stub"]
 
 # Pylance/pyright: resolve imports from a local ./.venv (pip install -e ".[dev,otel]"). torch and
 # transformers are intentionally absent there (GPU extra, imported lazily in utils/vlm_wrapper.py).

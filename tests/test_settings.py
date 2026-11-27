@@ -57,12 +57,14 @@ def test_resample_clamp(v, requested):
     assert s.get_resample_fps() == requested
 
 
-@pytest.mark.parametrize("v", [0, 1, 3, 7, 10, 25])
-def test_effective_rate_matches_stride(v):
-    s = RuntimeSettings(clip_fps=10)
-    clamped = min(max(v, 1), 10)
-    assert s.set_resample_fps(v) == pytest.approx(10 / (10 // clamped))
-    assert s.get_resample_fps() <= 10
+# Frames the pinned loader returned per slider value for the app's 5-frame, 10 fps clips (container check, T71).
+LOADER_FRAMES = {1: 1, 2: 1, 3: 2, 4: 2, 5: 2, 6: 5, 7: 5, 8: 5, 9: 5, 10: 5}
+
+
+@pytest.mark.parametrize("v", sorted(LOADER_FRAMES))
+def test_effective_rate_matches_loader_frames(v):
+    s = RuntimeSettings(clip_fps=10, clip_seconds=0.5)
+    assert s.set_resample_fps(v) == pytest.approx(LOADER_FRAMES[v] / 0.5)
 
 
 def test_resample_rejects_non_numeric():

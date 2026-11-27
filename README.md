@@ -26,8 +26,8 @@
 ## Features
 
 - **Live prompt iteration:** the next clip that goes to the model uses the new prompt.
-- **Runtime controls:** temperature (0.01 to 1.0) and resample FPS (slider 1 to 10). The rate the UI reports is not
-  what the model receives, and 1 FPS fails: see [Limitations](#limitations).
+- **Runtime controls:** temperature (0.01 to 1.0) and resample FPS (slider 1 to 10). The reply shows the effective
+  rate; a 5-frame clip allows only a few: see [Limitations](#limitations).
 - **Two sources:** the bundled street videos (default) or a webcam, switched from the UI. The webcam is the one attached to
   the **server** machine, not the browser's.
 - **Presets:** nine built-in street-scene prompts (dominant action, crossing, vehicle types, groups, unusual behaviour,
@@ -44,8 +44,6 @@ Requirements (the tested OS is Ubuntu, with the university version):
 - A CUDA GPU with FlashAttention2 support (Ampere or newer; see [Hardware](#hardware-and-performance)).
 - An NVIDIA driver and toolkit (`nvcc`) for **CUDA 13**: the `torch==2.13.0` Linux wheel on PyPI is a CUDA 13 build,
   and flash-attn is compiled against it.
-- The system **`ffmpeg` and `ffprobe`** programs (on Ubuntu, the `ffmpeg` package). The model's video loader runs them,
-  and no Python dependency or `setup.sh` installs them.
 - `git`, and **Python 3.11**, the version the dependency checks ran on. CI also checks that the `gpu` extra resolves on
   3.12, but the model stack was not installed or run there.
 
@@ -196,9 +194,8 @@ Measured by the author on Ubuntu + RTX 4090 (24 GB), with the university version
 - **Localhost only:** there is no authentication, and settings and source are shared by all connected clients.
 - **Video and answers are not synchronised:** the browser stream and the model's clips come from separate decoders.
 - **No temporal memory:** each 0.5 s clip is answered on its own. Output arrives as a whole message, not token by token.
-- **Resample FPS is inaccurate, and 1 FPS fails:** for the app's 0.5 s clips (5 frames), slider values 1 to 10 gave
-  the model 0, 1, 1, 2, 2, 3, 3, 4, 4 and 5 frames. The effective rate in the UI's reply assumes a different video
-  loader. At 1, every clip fails with `IndexError`. The old and new pins behave the same; this is not fixed yet.
+- **Resample FPS is coarse:** a 0.5 s clip has only 5 frames. Slider values 1 and 2 give the model 1 frame (shown as
+  2 fps), 3 to 5 give 2 frames (4 fps), and 6 to 10 give all 5 (10 fps).
 - **Accepted advisories:** `transformers==4.57.6`, the newest 4.x release, has known advisories. Six were reviewed on
   2026-11-27 and are ignored in [`osv-scanner.toml`](osv-scanner.toml) until 2027-02-28, each with its reason. The
   review read code and configuration; it did not try to exploit anything. The reasons depend on the pinned model
@@ -225,11 +222,19 @@ config and tokenizer files at the pinned revision, and **no model weights**:
 - **Remote code:** its classes import, and the config and processor load. This needs a short alias in
   [`utils/vlm_wrapper.py`](utils/vlm_wrapper.py) for a name that transformers moved.
 - **Video input:** for three clips written by the app's recorder, at each FPS from 1 to 10, the old and new pins gave
-  identical processor output (and the same failure at 1 FPS).
+  identical processor output on the loader path the app used then, which ran system `ffmpeg` and failed at 1 FPS.
 - **Architecture:** built on the `meta` device with `sdpa` and `eager`, the model's 779 tensor names match the
   checkpoint index, and so does its total size at `bfloat16`.
 - **Load and generate:** with a **tiny, randomly initialised** copy of the architecture saved locally, the app's own
   `VLM` class loaded it and generated tokens with `sdpa` and `eager`. The output is meaningless by design.
+
+The app now selects the loader's `decord` path. Checked on 2026-11-27 in the same kind of container, **without a GPU
+and without `ffmpeg` or `ffprobe` installed**:
+
+- The real processor ran for three recorder clips at each FPS from 1 to 10. Its frame counts matched the rate the app
+  reports, and it started no subprocess.
+- The tiny-model load and generate check passed again with `sdpa` and `eager`, at 10, 2 and 5 FPS.
+- At 10 FPS, both loader paths returned identical frames for those three clips (compared with `ffmpeg` installed).
 
 Not checked: anything on a GPU (CUDA wheels, `device_map` to a GPU, the flash-attn build and `flash_attention_2`),
 loading the real weights, answer quality, VRAM and latency.
@@ -288,7 +293,7 @@ Known hurdles for LiteLLM:
 |---|---|
 | Model | VideoLLaMA3-7B, HuggingFace Transformers, PyTorch, FlashAttention2 |
 | Backend | Python, FastAPI, uvicorn (HTTP and WebSocket), Loguru |
-| Video | OpenCV for capture and encoding; system ffmpeg decodes clips for the model (its remote code also imports decord) |
+| Video | OpenCV for capture and encoding; decord decodes clips for the model |
 | Frontend | Vanilla JavaScript, Bootstrap CSS (vendored, so no CDN) |
 | Observability | OpenTelemetry SDK, OTLP exporter, FastAPI instrumentation (optional) |
 | Quality | pytest, Ruff, GitHub Actions, gitleaks, osv-scanner, dependency review, Dependabot |
