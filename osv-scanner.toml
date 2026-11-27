@@ -1,0 +1,33 @@
+# Reviewed 2026-11-27 for transformers 4.57.6 with VideoLLaMA3-7B at MODEL_REVISION (utils/vlm_wrapper.py).
+# The reasons depend on that revision and on loading from the pinned local snapshot: review again if either changes.
+# Ignoring an ID also ignores its aliases. After effectiveUntil the finding fails the scan again.
+
+[[IgnoredVulns]]
+id = "GHSA-x9r9-c232-4q39"
+effectiveUntil = 2027-02-28
+reason = "Model loading calls load_custom_generate(), but only on the local snapshot of the pinned commit, which has no custom_generate/ directory. The app passes no custom_generate argument. The advisory lists no patched version; the upstream fix is in 5.17.0, and 5.x is untried with this model."
+
+[[IgnoredVulns]]
+id = "GHSA-xrqw-3rrv-vx5w"
+effectiveUntil = 2027-02-28
+reason = "Needs save_pretrained(). The app and the pinned remote code never call it, nor do the transformers loading and generation modules searched, outside save_pretrained itself. Fixed in 5.10.0; 5.x is untried with this model."
+
+[[IgnoredVulns]]
+id = "GHSA-fgcw-684q-jj6r"
+effectiveUntil = 2027-02-28
+reason = "LightGlue loading path. The only model loaded is the pinned one (model_type videollama3_qwen2, vision_encoder null). Fixed in 5.5.0; 5.x is untried with this model."
+
+[[IgnoredVulns]]
+id = "GHSA-29pf-2h5f-8g72"
+effectiveUntil = 2027-02-28
+reason = "Needs a crafted _attn_implementation_internal in a model config. The configs at the pinned commit have no such key, and no other model repo is loaded. Fixed in 5.3.0; 5.x is untried with this model."
+
+[[IgnoredVulns]]
+id = "GHSA-69w3-r845-3855"
+effectiveUntil = 2027-02-28
+reason = "Trainer checkpoint loading with torch below 2.6. Trainer is not used, and torch is pinned to 2.13.0. Fixed in 5.0.0rc3."
+
+[[IgnoredVulns]]
+id = "PYSEC-2025-217"
+effectiveUntil = 2027-02-28
+reason = "X-CLIP checkpoint conversion of untrusted files. The app runs no conversion scripts. OSV lists last_affected 5.0.0rc0 and no fixed version."

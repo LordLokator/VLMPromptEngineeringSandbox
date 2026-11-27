@@ -1,6 +1,8 @@
 """Structure checks for GitHub workflow and Dependabot files (CI cannot run locally)."""
 
 import re
+import tomllib
+from datetime import date
 from pathlib import Path
 from typing import Any
 
@@ -90,13 +92,26 @@ def test_osv_job_generates_gpu_requirements_before_scanning() -> None:
     # Written to the workspace root, which the recursive scan covers.
     assert "/" not in name
     assert "./" in steps[scan[0]]["with"]["scan-args"].split()
-    # A failed resolution must fail the job; only the scan itself is non-blocking.
+    # A failed resolution or a finding must fail the job.
     assert "continue-on-error" not in job
-    assert "continue-on-error" not in steps[generate[0]]
-    assert steps[scan[0]].get("continue-on-error") is True
+    for step in steps:
+        assert "continue-on-error" not in step
+    assert "--allow-no-lockfiles" not in steps[scan[0]]["with"]["scan-args"]
+
+
+def test_osv_ignores_are_documented_and_expire() -> None:
+    config = tomllib.loads((GITHUB.parent / "osv-scanner.toml").read_text(encoding="utf-8"))
+    # Only per-advisory ignores: no package-wide overrides.
+    assert set(config) == {"IgnoredVulns"}
+    for entry in config["IgnoredVulns"]:
+        assert set(entry) == {"id", "reason", "effectiveUntil"}, entry
+        assert entry["reason"].strip(), entry["id"]
+        assert isinstance(entry["effectiveUntil"], date), entry["id"]
 
 
 def test_ci_matrix_covers_311_and_312() -> None:
     jobs = _load(GITHUB / "workflows" / "ci.yml")["jobs"]
     versions = [v for job in jobs.values() for v in job.get("strategy", {}).get("matrix", {}).get("python-version", [])]
     assert {"3.11", "3.12"} <= set(versions)
+    for step in jobs["deps"]["steps"]:
+        assert "continue-on-error" not in step
