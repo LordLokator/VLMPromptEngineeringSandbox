@@ -14,8 +14,10 @@ _VideoCapture = cv2.VideoCapture
 
 
 @pytest.fixture(autouse=True)
-def no_webcam(monkeypatch):
-    """No test may open a camera: a device index is refused, files still open."""
+def no_webcam(request, monkeypatch):
+    """No test may open a camera: a device index is refused, files still open. Opted-in manual tests may."""
+    if request.node.get_closest_marker("manual") and os.environ.get("VLM_MANUAL_TESTS") == "1":
+        return
 
     def files_only(source, *args):
         assert not isinstance(source, int), "a test tried to open a camera"

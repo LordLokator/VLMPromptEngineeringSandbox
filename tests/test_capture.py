@@ -624,6 +624,64 @@ def test_recorder_survives_a_failed_write(monkeypatch, tmp_path):
     assert len(calls) == 2
 
 
+def test_clips_carry_their_identity_and_times_rise_within_a_loop(monkeypatch, tmp_path):
+    monkeypatch.setattr(clip_handling, "write_video", lambda frames, path, fps=60: None)
+    monkeypatch.setattr(clip_handling, "MAX_PENDING_CLIPS", 1000)  # the fake clock outruns any writer
+    hub, _clock, _caps = fake_hub(lambda _spec: ScriptCap([i * 100 for i in range(17)], 10.0))  # 1.7 s
+    recorder = ClipRecorder(hub, buffer_seconds=0.5, fps=10)
+    recorder.out_dir = str(tmp_path)
+    clips: list = []
+    done = threading.Event()
+
+    def on_flush(clip):
+        clips.append(clip)
+        if len(clips) == 8:
+            done.set()
+
+    recorder.start(on_flush)
+
+    def switch_in_the_third_pass(_sink, segment, _t):
+        if segment.spec.source_epoch == 0 and segment.loop == 2:
+            hub.select("sample:2")
+
+    sink = Collector(
+        hub, lambda c: any(s.spec.source_epoch == 1 and s.loop == 1 for s, *_ in c.clips),
+        on_feed=switch_in_the_third_pass,
+    )
+    hub.start()
+    try:
+        assert sink.done.wait(10) and done.wait(10)
+    finally:
+        hub.stop()
+        recorder.stop()
+
+    assert [c.clip_id for c in clips] == list(range(len(clips)))
+    runs: dict = {}
+    for clip in clips:
+        runs.setdefault((clip.source_epoch, clip.source_key, clip.loop), []).append(clip)
+    assert list(runs)[:3] == [(0, "sample:1", 0), (0, "sample:1", 1), (1, "sample:2", 0)]
+    for (_epoch, key, _loop), run_clips in runs.items():
+        assert [c.start_s for c in run_clips] == pytest.approx([0.0, 0.5, 1.0][: len(run_clips)])
+        assert [c.end_s for c in run_clips] == pytest.approx([c.start_s + 0.5 for c in run_clips])
+        assert {c.label for c in run_clips} == {make_spec(key, 0).label}
+    assert all(Path(c.video_path).parent == tmp_path for c in clips)
+
+
+def test_webcam_clip_times_are_wall_clock(monkeypatch, tmp_path):
+    recorder = _recorder(monkeypatch, tmp_path)
+    clips: list = []
+    done = threading.Event()
+    recorder.start(lambda clip: (clips.append(clip), done.set()))
+    segment = Segment(make_spec("webcam", 3), 0, None, 1_700_000_000.0)
+    recorder._sampler.feed(segment, 0.0, BLACK)
+    recorder._sampler.advance(segment, 0.5)
+    assert done.wait(5)
+    recorder.stop()
+    (clip,) = clips
+    assert (clip.source_key, clip.source_epoch, clip.label, clip.loop) == ("webcam", 3, "Webcam", None)
+    assert (clip.start_s, clip.end_s) == (1_700_000_000.0, 1_700_000_000.5)
+
+
 def test_makedir_nested_and_idempotent(tmp_path):
     from utils.file_management import makedir
 

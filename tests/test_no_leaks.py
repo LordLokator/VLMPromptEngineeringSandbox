@@ -17,7 +17,7 @@ from utils import logging_setup
 from utils.backends import ChainBackend
 from utils.logging_setup import REDACTED, configure_logging, redact
 from video_handling import clip_handling, source, streaming
-from video_handling.clip_handling import ClipRecorder
+from video_handling.clip_handling import ClipRecorder, ClipSample
 from video_handling.sampling import Segment
 from video_handling.streaming import CaptureHub
 
@@ -170,11 +170,12 @@ def test_backend_failure_reaches_neither_log_nor_websocket(sink, monkeypatch, tm
             ws.send_text('{"role": "x"}')
             ws.receive_json()  # the connection is registered
             process_clip(
-                str(tmp_path / "c.mp4"),
+                ClipSample(0, "sample:1", 0, "Sample 1", 0.0, 0.5, 0, str(tmp_path / "c.mp4")),
                 ChainBackend([LeakyBackend()]),
                 web_engine.broadcast_sync,
                 get_temperature=lambda: 0.1,
                 get_fps=lambda: 10,
+                get_source_epoch=lambda: 0,
                 max_frames=20,
             )
             frame = ws.receive_text()

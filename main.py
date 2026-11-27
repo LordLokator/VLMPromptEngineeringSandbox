@@ -15,7 +15,7 @@ from utils.backends import make_backend
 from utils.errors import log_failure
 from utils.logging_setup import configure_logging, route_stdlib_logging
 from web_engine import start_server_threaded, broadcast_sync, emit
-from video_handling.clip_handling import ClipRecorder
+from video_handling.clip_handling import ClipRecorder, ClipSample
 from video_handling.streaming import CaptureHub
 
 FPS = 10
@@ -28,14 +28,16 @@ class VLMLike(Protocol):
 
 
 def process_clip(
-    clip_path: str,
+    clip: ClipSample,
     vlm: VLMLike,
     broadcast: Callable[[dict], None],
     *,
     get_temperature: Callable[[], float],
     get_fps: Callable[[], int],
+    get_source_epoch: Callable[[], int],
     max_frames: int,
 ) -> None:
+    """Ask the backend about one clip. Nothing is broadcast if the source changed in the meantime."""
     try:
         start = timeit.default_timer()
 
@@ -43,7 +45,7 @@ def process_clip(
         backend = getattr(vlm, "name", type(vlm).__name__)
         with telemetry.inference(backend, fps, max_frames, temperature) as set_backend:
             output, _temperature = vlm.forward(
-                video_path=clip_path,
+                video_path=clip.video_path,
                 fps=fps,
                 max_frames=max_frames,
                 temperature=temperature
@@ -57,26 +59,30 @@ def process_clip(
         logger.info(_message)
 
         # Send to frontend
+        if clip.source_epoch != get_source_epoch():
+            logger.info(f"Dropped the answer for clip {clip.clip_id}: it shows an earlier source ({clip.label}).")
+            return
         broadcast(emit("vlm", output, delay=delay))
 
     except Exception as e:  # noqa: BLE001 - worker boundary: logged and reported to the UI
         # Inference can fail in many ways (CUDA, decoding, model); the worker must survive and tell the UI.
         message = log_failure("Failed to process clip", e)
-        broadcast(emit("error", f"Failed to process: {message}"))
+        if clip.source_epoch == get_source_epoch():
+            broadcast(emit("error", f"Failed to process: {message}"))
 
     finally:
         # README promises clips are deleted after inference.
-        Path(clip_path).unlink(missing_ok=True)
+        Path(clip.video_path).unlink(missing_ok=True)
 
 
 def make_clip_handler(
-    process: Callable[[str], None],
+    process: Callable[[ClipSample], None],
     executor: ThreadPoolExecutor,
     busy: threading.Lock,
     notify: Callable[[dict], None] | None = None,
     notice_interval: float = 5.0,
     clock: Callable[[], float] = time.monotonic,
-) -> Callable[[str], None]:
+) -> Callable[[ClipSample], None]:
     """Return a flush callback that drops (and deletes) clips while inference is in flight.
 
     On a drop, `notify` gets a muted system frame, at most once per `notice_interval` seconds.
@@ -84,14 +90,15 @@ def make_clip_handler(
     dropped = 0
     last_notice = float("-inf")
 
-    def run(clip_path: str) -> None:
+    def run(clip: ClipSample) -> None:
         try:
-            process(clip_path)
+            process(clip)
         finally:
             busy.release()
 
-    def on_clip_flush(clip_path: str) -> None:
+    def on_clip_flush(clip: ClipSample) -> None:
         nonlocal dropped, last_notice
+        clip_path = clip.video_path
         if not busy.acquire(blocking=False):
             dropped += 1
             telemetry.record_drop()
@@ -102,9 +109,12 @@ def make_clip_handler(
                 last_notice = now
                 notify(emit("system", "Model busy, skipped a clip", muted=True))
             return
-        logger.info(f"Clip flushed: {clip_path}")
+        logger.info(
+            f"Clip {clip.clip_id} flushed: {clip.source_key} (epoch {clip.source_epoch}, loop {clip.loop}), "
+            f"{clip.start_s:.1f}-{clip.end_s:.1f} s: {clip_path}"
+        )
         try:
-            executor.submit(run, clip_path)
+            executor.submit(run, clip)
         except RuntimeError:
             # Executor already shut down.
             busy.release()
@@ -182,6 +192,7 @@ def main():
                 broadcast=broadcast_sync,
                 get_temperature=settings.get_temperature,
                 get_fps=settings.get_resample_fps,
+                get_source_epoch=lambda: hub.spec.source_epoch,
                 max_frames=MAX_FRAMES,
             )
             on_clip_flush = make_clip_handler(process, executor, busy, notify=broadcast_sync)

@@ -112,6 +112,9 @@ Design choices:
   one is implausible). A file shorter than a clip holds its last frame. Writing clips happens on another thread.
 - **A failed source stays failed** until a source is selected again (the toggle): a file that yields no frames, a missing
   webcam, or one that delivers nothing for 3 s. The preview then shows an error image, and no clips are cut from it.
+- **Each clip knows its moment:** source, source change counter, start and end time and loop number (webcam: wall-clock
+  time). A result, answer or error, for a clip from before the last source switch is not shown. The page does not
+  display these times yet.
 - **One inference at a time, no queue.** Clips that arrive while the model is busy are dropped, so answers do not fall
   further and further behind the video.
 - **A backend is one method:** `forward(video_path, fps, max_frames, temperature) -> (text, temperature)`.
@@ -335,7 +338,8 @@ OpenTelemetry (see [Observability](#observability-opentelemetry)).
 
 ## Development
 
-No GPU needed: the model is mocked in tests.
+No GPU needed: the model is mocked in tests. Tests under `tests/manual/` need a real device or file and are skipped
+unless `VLM_MANUAL_TESTS=1`; their docstring says what they use.
 
 ```bash
 pip install ".[dev]"

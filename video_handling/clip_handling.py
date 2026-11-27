@@ -4,6 +4,7 @@ import glob
 import os
 import queue
 import threading
+from dataclasses import dataclass
 from typing import Any, Callable
 from loguru import logger
 
@@ -14,6 +15,20 @@ from video_handling.streaming import CaptureHub
 from video_handling.write_video import write_video
 
 MAX_PENDING_CLIPS = 2
+
+
+@dataclass(frozen=True)
+class ClipSample:
+    """A written clip and the moment it shows."""
+
+    clip_id: int  # unique within one run of the app
+    source_key: str
+    source_epoch: int  # an epoch other than the current one means the source has changed since
+    label: str
+    start_s: float  # seconds into the file; for the webcam, wall-clock (Unix) seconds
+    end_s: float
+    loop: int | None  # pass through the file, from 0; None for the webcam
+    video_path: str
 
 
 class ClipRecorder:
@@ -27,9 +42,9 @@ class ClipRecorder:
         self.running = False
         self.counter = 0
         self._thread: threading.Thread | None = None
-        self.flush_callback: Callable = lambda path: logger.debug(f"Clip flushed: {path}")
+        self.flush_callback: Callable[[ClipSample], None] = lambda clip: logger.debug(f"Clip flushed: {clip}")
         self._sampler = GridSampler(fps, round(buffer_seconds * fps), self._enqueue)
-        self._pending: queue.Queue[list[Any]] = queue.Queue(maxsize=MAX_PENDING_CLIPS)
+        self._pending: queue.Queue[tuple[Segment, float, list[Any]]] = queue.Queue(maxsize=MAX_PENDING_CLIPS)
 
         # Create '<repo>/tmp' if it doesn't exists:
         os.makedirs(self.out_dir, exist_ok=True)
@@ -40,7 +55,7 @@ class ClipRecorder:
         """Runs on the capture thread: never blocks. If writing falls behind, the oldest waiting clip goes."""
         while True:
             try:
-                self._pending.put_nowait(frames)
+                self._pending.put_nowait((segment, start_t, frames))
                 return
             except queue.Full:
                 try:
@@ -54,27 +69,38 @@ class ClipRecorder:
         try:
             while self.running:
                 try:
-                    frames = self._pending.get(timeout=0.1)
+                    segment, start_t, frames = self._pending.get(timeout=0.1)
                 except queue.Empty:
                     continue
                 if not self.running:
                     break
 
-                filename = f"{self.out_dir}/clip_{self.counter:03d}.mp4"
+                clip_id = self.counter
+                filename = f"{self.out_dir}/clip_{clip_id:03d}.mp4"
                 self.counter += 1
 
                 try:
                     write_video(frames, filename, fps=self.fps)
                     full_pathname = full_path(filename)
                     logger.debug(f"Calling flush_callback with: {full_pathname}")
-                    self.flush_callback(full_pathname)
+                    start_s = segment.base_s + start_t
+                    self.flush_callback(ClipSample(
+                        clip_id=clip_id,
+                        source_key=segment.spec.source_key,
+                        source_epoch=segment.spec.source_epoch,
+                        label=segment.spec.label,
+                        start_s=start_s,
+                        end_s=start_s + len(frames) / self.fps,
+                        loop=segment.loop,
+                        video_path=full_pathname,
+                    ))
 
                 except Exception as e:  # noqa: BLE001 - worker boundary: logged, the recorder keeps running
                     log_failure("Video writing or callback failed", e)
         finally:
             logger.info("ClipRecorder stopped.")
 
-    def start(self, flush_callback: Callable = lambda _: None):
+    def start(self, flush_callback: Callable[[ClipSample], None] = lambda _: None):
         self.flush_callback = flush_callback
         self.running = True
 
