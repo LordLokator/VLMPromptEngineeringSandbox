@@ -14,6 +14,8 @@ MAX_NEW_TOKENS = 1024
 MODEL_PATH = "DAMO-NLP-SG/VideoLLaMA3-7B"
 # Pinned because trust_remote_code=True runs code from the repo. HF DAMO-NLP-SG/VideoLLaMA3-7B,
 # last modified 2025-09-02, checked 2026-11-25.
+# When changing this or how the model is loaded, review the reasons in osv-scanner.toml, and recheck the video
+# loader facts at DECORD_MAX_SECONDS and in RuntimeSettings.effective_resample_fps.
 MODEL_REVISION = "d5b763e368861e7f5096e7ff1b49f92fbccf8ae6"
 DEVICE = "cuda:0"
 # Override e.g. on pre-Ampere GPUs or without flash-attn installed.
