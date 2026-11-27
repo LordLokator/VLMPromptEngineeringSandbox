@@ -147,7 +147,8 @@ sequenceDiagram
 ```
 
 Limits: `text` is capped at 2000 characters. A frame over 64 KiB closes the connection (code 1009). Browser connections from
-another origin are rejected (code 1008).
+another origin are rejected (code 1008). HTTP requests and WebSocket connections whose `Host` header is not in the
+[allowlist](#configuration) are refused (HTTP 400).
 
 ### HTTP
 
@@ -168,7 +169,8 @@ All environment variables are optional.
 
 | Variable | Default | Meaning |
 |---|---|---|
-| `VLM_HOST` | `127.0.0.1` | Bind address. A non-loopback value logs a warning (there is no authentication) and disables the API docs. |
+| `VLM_HOST` | `127.0.0.1` | Bind address. A non-loopback value requires `VLM_ALLOWED_HOSTS`, logs a warning (there is no authentication) and disables the API docs. |
+| `VLM_ALLOWED_HOSTS` | empty | Comma-separated host names or IP addresses, without ports, that browsers use to reach the app, for example `192.168.1.20,mybox.local`. Added to `localhost`, `127.0.0.1` and `[::1]`, which are always allowed. `*.example.com` matches subdomains; a bare `*` is refused. Required when `VLM_HOST` is not loopback. It guards against DNS rebinding and is not authentication. |
 | `VLM_PORT` | `8000` | Port. |
 | `VLM_ATTN_IMPL` | `flash_attention_2` | Attention implementation passed to the model. No value has run on a GPU with the current pins; `sdpa` and `eager` ran only in the [CPU checks](#ml-stack-what-was-checked). |
 | `VLM_BACKEND` | `hf` | Inference backend. Only `hf` (local VideoLLaMA3) exists; any other value fails at startup. |
