@@ -46,8 +46,8 @@ Requirements (the tested OS is Ubuntu, with the university version):
   and flash-attn is compiled against it.
 - The system **`ffmpeg` and `ffprobe`** programs (on Ubuntu, the `ffmpeg` package). The model's video loader runs them,
   and no Python dependency or `setup.sh` installs them.
-- `git`, and **Python 3.11**, the version the dependency checks ran on. The `gpu` extra also resolves on 3.12, but
-  nothing was installed or run there.
+- `git`, and **Python 3.11**, the version the dependency checks ran on. CI also checks that the `gpu` extra resolves on
+  3.12, but the model stack was not installed or run there.
 
 ```bash
 git clone https://github.com/LordLokator/VLMPromptEngineeringSandbox VLMDemo
@@ -199,15 +199,15 @@ Measured by the author on Ubuntu + RTX 4090 (24 GB), with the university version
 - **Resample FPS is inaccurate, and 1 FPS fails:** for the app's 0.5 s clips (5 frames), slider values 1 to 10 gave
   the model 0, 1, 1, 2, 2, 3, 3, 4, 4 and 5 frames. The effective rate in the UI's reply assumes a different video
   loader. At 1, every clip fails with `IndexError`. The old and new pins behave the same; this is not fixed yet.
-- **Remaining advisories:** `transformers==4.57.6`, the newest 4.x release, still has known advisories. On 2026-11-26
-  osv-scanner 2.7.1 reported 6: GHSA-29pf-2h5f-8g72, GHSA-69w3-r845-3855, GHSA-fgcw-684q-jj6r, GHSA-x9r9-c232-4q39,
-  GHSA-xrqw-3rrv-vx5w and PYSEC-2025-217. Each has a fix only in 5.x or lists no fixed version, and 5.x is untried
-  with this model. It reported none for the pinned `torch` and `numpy`. A per-advisory review is still pending.
-  GHSA-x9r9-c232-4q39 concerns `load_custom_generate()`, which model loading does call. The app loads from a snapshot
-  of the pinned revision, which has no `custom_generate/` directory.
-- **Dependency scanning does not block:** inside its CI job, osv-scanner scans a list resolved from the `gpu` extra in
-  `pyproject.toml`. The scan step is `continue-on-error`, so a green check does not mean a clean scan. Dependabot
-  alerts are based on the pins in `pyproject.toml` on the default branch.
+- **Accepted advisories:** `transformers==4.57.6`, the newest 4.x release, has known advisories. Six were reviewed on
+  2026-11-27 and are ignored in [`osv-scanner.toml`](osv-scanner.toml) until 2027-02-28, each with its reason. The
+  review read code and configuration; it did not try to exploit anything. The reasons depend on the pinned model
+  revision and on loading it from a local snapshot. For GHSA-x9r9-c232-4q39, model loading does call the affected
+  function, on a snapshot that has no `custom_generate/` directory.
+- **Dependency scanning:** the osv-scanner CI job fails on any advisory that is not in that file. It scans a list
+  resolved from the `gpu` extra in `pyproject.toml`, so transitive versions can differ between runs. It is not a
+  required check. The dependency review job does not see the `gpu` extra. Dependabot alerts are based on the pins in
+  `pyproject.toml` on the default branch.
 - **Remote code:** the model loads with `trust_remote_code=True`. The app downloads one fixed repository revision and
   gives the loaders only that local directory. With `transformers==4.57.6`, passing the repository name and `revision=`
   was not enough: `AutoProcessor` looked up the files that choose which code to run on the `main` branch.
@@ -308,9 +308,8 @@ CI runs lint and a compile check, tests on Python 3.11 and 3.12, and a dependenc
 
 All dependencies are declared in [`pyproject.toml`](pyproject.toml), whose comments describe each group and how to install
 it; no requirements or lock file is committed. The security workflow's osv-scanner job resolves the `gpu` extra (and the
-base dependencies) for Linux and Python 3.11 into a temporary file and scans it without blocking (see
-[Limitations](#limitations)). Unpinned and transitive versions are whatever resolves on that run; they are not the
-university version's environment.
+base dependencies) for Linux and Python 3.11 into a temporary file and scans it (see [Limitations](#limitations)).
+Unpinned and transitive versions are whatever resolves on that run; they are not the university version's environment.
 
 ```
 main.py, web_engine.py   wiring and shutdown; HTTP and /ws

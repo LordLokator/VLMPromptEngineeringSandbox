@@ -44,16 +44,15 @@ jobs:
           uv pip compile pyproject.toml --extra gpu --python-version 3.11
           --python-platform x86_64-unknown-linux-gnu -o osv-requirements.txt
       - uses: google/osv-scanner-action/osv-scanner-action@32d3cd482bdadfb38b186c0ad1b031902d55d932 # v2.7.1
-        # Scans the list generated above. It reports known advisories for the torch/transformers pins
-        # and exits 1, which continue-on-error hides:
-        # a green check is not a clean scan, read the log. Deal with the advisories before deleting
-        # `continue-on-error` to make this a gate.
-        continue-on-error: true
+        # Scans the list generated above and fails the job on any advisory that osv-scanner.toml does not list.
+        # Transitive versions are resolved on each run, so a new advisory can fail a run without a repo change.
         with:
           scan-args: |-
             --recursive
             ./
 
+  # Does not see pyproject.toml extras: on PR #5 it reported no changes although the gpu pins moved, so a green
+  # result says nothing about them. osv-scanner above covers them.
   dependency-review:
     if: github.event_name == 'pull_request'
     runs-on: ubuntu-latest

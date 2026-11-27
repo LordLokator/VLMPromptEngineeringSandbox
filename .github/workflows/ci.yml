@@ -59,9 +59,7 @@ jobs:
           cache: pip
           cache-dependency-path: pyproject.toml
       - run: pip install --dry-run ".[gpu]"
-      # 3.12 resolution was never tried (numpy 1.24.4 has no 3.12 wheels): informational only.
       - uses: actions/setup-python@v7
         with:
           python-version: "3.12"
       - run: pip install --dry-run ".[gpu]"
-        continue-on-error: true
