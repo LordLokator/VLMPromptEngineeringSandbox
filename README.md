@@ -16,8 +16,8 @@
   by lint, compile checks and tests with the model mocked. The new pins also had [CPU-only container
   checks](#ml-stack-what-was-checked), which do not show that the real model works.
 - **What it is:** a small proof of concept for one user on localhost. It is not a production service.
-- **Where it is heading:** a generic, model-agnostic app, using **OpenTelemetry** for observability (basic version in place)
-  and **LiteLLM** for model routing (not implemented yet). See [Direction](#direction-a-generic-app).
+- **Where it is heading:** two models of your choice answering the same video side by side, with latency, token and cost
+  figures, usable without a GPU. **Planned, not implemented yet.** See [Roadmap](#roadmap-compare-two-models).
 
 <img width="100%" alt="Web UI: video stream, preset buttons and prompt controls on the left, chat panel on the right" src="https://github.com/user-attachments/assets/e5600752-73b2-404c-997b-cb4f48cd624d" />
 
@@ -59,7 +59,8 @@ python main.py
 because the latest PyPI release (2.8.3.post2, checked 2026-11-26) compiles as C++17 while torch 2.13 headers use C++20
 syntax. The build can need a lot of memory: an [upstream report](https://github.com/Dao-AILab/flash-attention/issues/2995)
 on 2.8.3.post1 saw more than 10 GB for a single compile process. flash-attn is the last thing the script installs, so
-if only that step fails, `VLM_ATTN_IMPL=sdpa python main.py` is worth trying (also not run on a GPU).
+if only that step fails, activating `.venv` and running `VLM_ATTN_IMPL=sdpa python main.py` is worth trying (also not
+run on a GPU).
 
 Open <http://localhost:8000/>. The model repository is downloaded from Hugging Face at a pinned revision and loaded from
 that local snapshot; no VideoLLaMA3 clone is needed. Inference starts once the model has loaded, with a placeholder
@@ -153,6 +154,8 @@ another origin are rejected (code 1008).
 | Route | Purpose |
 |---|---|
 | `GET /` | Web UI (static assets under `/src`) |
+| `GET /favicon.ico` | Page icon |
+| `GET /presets/<file>` | Static files from `presets/`, including saved user presets |
 | `GET /video_feed` | MJPEG stream of the active source |
 | `GET /preset_buttons` | Built-in and user presets, as a list of `{"label", "text"}` |
 | `POST /save_preset` | JSON `{"label", "text"}`; the label is trimmed to 25 characters. Returns `{"status": "ok", "label"}`, or an error with status 400 or 415. |
@@ -268,24 +271,30 @@ The app's own spans and metrics never include prompt text, model output, clip pa
 `OTEL_METRIC_EXPORT_INTERVAL` are honoured. Besides the in-memory exporter tests, every signal in the table was checked
 once against `grafana/otel-lgtm:0.41.1` on 2026-11-26 with a mocked backend, over OTLP/gRPC.
 
-## Direction: a generic app
+## Roadmap: compare two models
 
-The aim is to turn a single-model demo into a generic app: the same UI and prompt workflow against any capable model, local
-or remote, with comparable latency and error data for each.
+The goal for the first release: pick two models, play a video, and compare what they say about the same moment, and what
+it costs. **Nothing in this table is implemented yet.** Today the app runs one local model, selected at startup.
 
-| Piece | Role | Status |
-|---|---|---|
-| Backend seam (`VLM_BACKEND`) | One interface for any model | In place; only `hf` is selectable. A `ChainBackend` failover class exists and is tested, but is not selectable yet. |
-| OpenTelemetry | Vendor-neutral traces and metrics, labelled by backend | App-level instrumentation in place; checked against a local collector with a mocked backend. |
-| LiteLLM | Routing and failover across providers and self-hosted servers | **Planned, not implemented.** |
+| Planned | What it means |
+|---|---|
+| Run without a GPU | A base install that starts with built-in demo agents (no model); the local VideoLLaMA3 becomes optional. |
+| Your own models | OpenAI, Anthropic, Ollama or any OpenAI-compatible URL. Keys and URLs come from environment variables. |
+| Model selection | Choose each agent's provider and model in the UI while the app runs. |
+| Side-by-side view | Video in the middle, one agent on each side. Both get the same sampled frames, and the page shows them. |
+| Metrics | Latency, tokens and estimated cost per answer (or "n/a" when unknown), in a panel you can hide. |
+| Cost control | Analysis starts paused; run, pause, single step, and limits on rounds and estimated spend. |
+| Your own video | Local `.mp4` / `.webm` files besides the samples and the server webcam. |
 
-Known hurdles for LiteLLM:
+Design choices behind the plan:
 
-- On 2026-11-25, current LiteLLM releases could not be installed next to the old `transformers==4.46.3` (conflicting
-  `tokenizers` requirements). This has not been re-checked with the current pins. If LiteLLM does not fit well, a plain
-  OpenAI-compatible client behind the same seam is the fallback.
-- Video support differs between providers and servers. Image-only models would need clips sent as sampled frames.
-- A remote backend sends your video off the machine, so it will be opt-in.
+- **Thin adapters on the official OpenAI and Anthropic SDKs instead of LiteLLM.** The app needs only a small part of what
+  a router offers, and two SDKs add far fewer dependencies.
+- **Frames, not video files,** go to remote models: it is the input form these APIs have in common.
+- **Remote models are opt-in.** Using one sends frames of your video to that provider and may cost money.
+
+Already in place to build on: a one-method backend interface (`VLM_BACKEND`, only `hf` selectable) and optional
+OpenTelemetry (see [Observability](#observability-opentelemetry)).
 
 ## Tools
 

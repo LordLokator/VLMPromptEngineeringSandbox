@@ -13,7 +13,7 @@ const presetBar = document.getElementById("presetBar");
 const saveBtn = document.getElementById("savePresetBtn");
 
 function handleServerMessage(data) {
-    // Server envelope: {type: 'vlm'|'error'|'system', text, delay?}
+    // Server envelope: {type: 'vlm'|'error'|'system', text, delay?, muted?}
     if (typeof data.type !== "string" || typeof data.text !== "string" || !SERVER_TYPES.includes(data.type)) {
         console.warn("Unhandled message format:", data);
         return;
