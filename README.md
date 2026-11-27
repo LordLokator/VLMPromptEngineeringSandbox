@@ -180,7 +180,8 @@ Files: user presets go to `presets/user_presets.json`, prompt history to `prompt
 
 **Logs and errors:** logs go to stderr. Python's standard `logging` (uvicorn included), warnings and uncaught errors take
 the same path. Tracebacks do not print local variable values. For backend and capture failures the log keeps the kind of
-failure, the exception class, any HTTP status and the stack, not the exception message. The values of `OPENAI_API_KEY`,
+failure, the exception class, any HTTP status and the stack, not the exception message. Other errors, such as a model
+that fails to load at startup, are logged with their message. The values of `OPENAI_API_KEY`,
 `ANTHROPIC_API_KEY`, `VLM_COMPAT_API_KEY`, `HF_TOKEN` and `HUGGING_FACE_HUB_TOKEN`, if set and at least 8 characters
 long, are replaced with `[redacted]` in log text. Output that bypasses Python logging, such as messages from native
 libraries or the OpenTelemetry console exporter, is not filtered. No API provider exists yet, so no key is used by the app

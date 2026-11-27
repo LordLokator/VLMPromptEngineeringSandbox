@@ -59,7 +59,7 @@ class ClipRecorder:
                         logger.warning("Stream ended, restarting...")
                         stream = self._open()
                         continue
-                    except RuntimeError as e:
+                    except Exception as e:  # noqa: BLE001 - capture boundary (cv2.error is no RuntimeError)
                         message = log_failure("Capture source failed", e)
                         self.running = False
                         if self.on_error is not None:

@@ -21,10 +21,10 @@ def parse_allowed_hosts(value: str) -> list[str]:
         entry = raw.strip().lower()
         if not entry:
             continue
-        if _is_ipv6(entry):
-            entry = f"[{entry}]"
-        if entry.startswith("[") and entry.endswith("]"):
-            valid = _is_ipv6(entry[1:-1])
+        bare = entry[1:-1] if entry.startswith("[") and entry.endswith("]") else entry
+        if _is_ipv6(bare):
+            # Browsers send the compressed form, and the middleware compares text.
+            entry, valid = f"[{IPv6Address(bare).compressed}]", True
         else:
             name = entry.removeprefix("*.")
             valid = bool(name) and not set(name) & set("*:/[] \t@?#")

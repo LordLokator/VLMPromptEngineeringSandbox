@@ -185,6 +185,27 @@ def test_backend_failure_reaches_neither_log_nor_websocket(sink, monkeypatch, tm
     assert_clean(out)
 
 
+def test_non_runtime_capture_error_is_classified(sink, monkeypatch, tmp_path):
+    class Broken(_Frames):
+        def __next__(self):
+            fail_with_value_error()
+
+    errors = []
+    recorder = ClipRecorder(buffer_seconds=0.3, fps=10)
+    recorder.out_dir = str(tmp_path)
+    monkeypatch.setattr(recorder, "_open", Broken)
+    recorder.start(on_error=errors.append)
+    assert recorder._thread is not None
+    recorder._thread.join(5)
+    assert errors == ["Capture source failed: Internal error (ValueError)"]
+    assert f"bad frame for key {REDACTED}" not in sink.getvalue()
+    assert_clean(sink.getvalue())
+
+
+def fail_with_value_error():
+    raise ValueError(f"bad frame for key {KEY}")
+
+
 class _Frames:
     def __next__(self):
         return np.zeros((2, 2, 3), dtype=np.uint8)

@@ -94,7 +94,7 @@ def test_non_loopback_with_allowed_hosts_serves_that_name():
 
 
 def test_parse_allowed_hosts():
-    assert parse_allowed_hosts(" MyBox.local, 192.168.1.20 ,,fd00::5,[FD00::6], *.lan.example ") == [
+    assert parse_allowed_hosts(" MyBox.local, 192.168.1.20 ,,fd00:0:0::5,[FD00::0006], *.lan.example ") == [
         "mybox.local",
         "192.168.1.20",
         "[fd00::5]",
