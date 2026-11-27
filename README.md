@@ -190,7 +190,7 @@ Measured by the author on Ubuntu + RTX 4090 (24 GB), with the university version
 ## Limitations
 
 - **Not run on a GPU** since the overhaul, which changed the model wrapper and the setup script, or since the ML pin
-  upgrade. Loading the real weights and generating real answers are untested.
+  upgrade or the switch to the `decord` video path. Loading the real weights and generating real answers are untested.
 - **Localhost only:** there is no authentication, and settings and source are shared by all connected clients.
 - **Video and answers are not synchronised:** the browser stream and the model's clips come from separate decoders.
 - **No temporal memory:** each 0.5 s clip is answered on its own. Output arrives as a whole message, not token by token.
@@ -309,7 +309,8 @@ ruff check .
 pytest -q
 ```
 
-CI runs lint and a compile check, tests on Python 3.11 and 3.12, and a dependency-resolution check of the `gpu` extra.
+CI runs lint and a compile check, tests on Python 3.11 and 3.12, and a dependency-resolution check of the `gpu` extra on
+both versions.
 
 All dependencies are declared in [`pyproject.toml`](pyproject.toml), whose comments describe each group and how to install
 it; no requirements or lock file is committed. The security workflow's osv-scanner job resolves the `gpu` extra (and the
