@@ -126,7 +126,7 @@ Design choices:
 | `system` | none | sender | Acknowledges an update or a source toggle. |
 | `system` | `muted: true` | all clients | A clip was skipped because the model was busy. |
 | `error` | none | sender | A frame or setting was rejected. |
-| `error` | none | all clients | Inference or the capture source failed. |
+| `error` | none | all clients | Inference or the capture source failed. The text names a kind of failure, the exception class and any HTTP status, never the exception message. |
 
 ```mermaid
 sequenceDiagram
@@ -147,7 +147,8 @@ sequenceDiagram
 ```
 
 Limits: `text` is capped at 2000 characters. A frame over 64 KiB closes the connection (code 1009). Browser connections from
-another origin are rejected (code 1008).
+another origin are rejected (code 1008). HTTP requests and WebSocket connections whose `Host` header is not in the
+[allowlist](#configuration) are refused (HTTP 400).
 
 ### HTTP
 
@@ -168,13 +169,23 @@ All environment variables are optional.
 
 | Variable | Default | Meaning |
 |---|---|---|
-| `VLM_HOST` | `127.0.0.1` | Bind address. A non-loopback value logs a warning (there is no authentication) and disables the API docs. |
+| `VLM_HOST` | `127.0.0.1` | Bind address. A non-loopback value requires `VLM_ALLOWED_HOSTS`, logs a warning (there is no authentication) and disables the API docs. |
+| `VLM_ALLOWED_HOSTS` | empty | Comma-separated host names or IP addresses, without ports, that browsers use to reach the app, for example `192.168.1.20,mybox.local`. Added to `localhost`, `127.0.0.1` and `[::1]`, which are always allowed. `*.example.com` matches subdomains; a bare `*` is refused. Required when `VLM_HOST` is not loopback. It guards against DNS rebinding and is not authentication. |
 | `VLM_PORT` | `8000` | Port. |
 | `VLM_ATTN_IMPL` | `flash_attention_2` | Attention implementation passed to the model. No value has run on a GPU with the current pins; `sdpa` and `eager` ran only in the [CPU checks](#ml-stack-what-was-checked). |
 | `VLM_BACKEND` | `hf` | Inference backend. Only `hf` (local VideoLLaMA3) exists; any other value fails at startup. |
 | `OTEL_ENABLED`, `OTEL_*` | off | See [Observability](#observability-opentelemetry). |
 
 Files: user presets go to `presets/user_presets.json`, prompt history to `prompting/history.json`.
+
+**Logs and errors:** logs go to stderr. Python's standard `logging` (uvicorn included), warnings and uncaught errors take
+the same path. Tracebacks do not print local variable values. For backend and capture failures the log keeps the kind of
+failure, the exception class, any HTTP status and the stack, not the exception message. Other errors, such as a model
+that fails to load at startup, are logged with their message. The values of `OPENAI_API_KEY`,
+`ANTHROPIC_API_KEY`, `VLM_COMPAT_API_KEY`, `HF_TOKEN` and `HUGGING_FACE_HUB_TOKEN`, if set and at least 8 characters
+long, are replaced with `[redacted]` in log text. Output that bypasses Python logging, such as messages from native
+libraries or the OpenTelemetry console exporter, is not filtered. No API provider exists yet, so no key is used by the app
+itself.
 
 ## Hardware and performance
 
@@ -193,7 +204,7 @@ Measured by the author on Ubuntu + RTX 4090 (24 GB), with the university version
 ## Limitations
 
 - **Not run on a GPU** since the overhaul, which changed the model wrapper and the setup script, or since the ML pin
-  upgrade. Loading the real weights and generating real answers are untested.
+  upgrade or the switch to the `decord` video path. Loading the real weights and generating real answers are untested.
 - **Localhost only:** there is no authentication, and settings and source are shared by all connected clients.
 - **Video and answers are not synchronised:** the browser stream and the model's clips come from separate decoders.
 - **No temporal memory:** each 0.5 s clip is answered on its own. Output arrives as a whole message, not token by token.
@@ -318,7 +329,8 @@ ruff check .
 pytest -q
 ```
 
-CI runs lint and a compile check, tests on Python 3.11 and 3.12, and a dependency-resolution check of the `gpu` extra.
+CI runs lint and a compile check, tests on Python 3.11 and 3.12, and a dependency-resolution check of the `gpu` extra on
+both versions.
 
 All dependencies are declared in [`pyproject.toml`](pyproject.toml), whose comments describe each group and how to install
 it; no requirements or lock file is committed. The security workflow's osv-scanner job resolves the `gpu` extra (and the

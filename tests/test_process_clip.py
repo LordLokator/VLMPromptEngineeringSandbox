@@ -31,8 +31,7 @@ def test_ok_message():
 
 def test_error_message():
     (msg,) = run(FakeVLM(fail=True))
-    assert msg["type"] == "error"
-    assert "boom" in msg["text"]
+    assert msg == {"type": "error", "text": "Failed to process: Internal error (RuntimeError)"}
 
 
 def test_temperature_getter_is_used():
@@ -184,6 +183,8 @@ def test_signal_during_backend_load_exits_cleanly(monkeypatch):
         return object()
 
     server = Server()
+    monkeypatch.setattr(app_main, "configure_logging", lambda: None)  # would replace global hooks
+    monkeypatch.setattr(app_main, "route_stdlib_logging", lambda: None)
     monkeypatch.setattr(app_main, "start_server_threaded", lambda *_: server)
     monkeypatch.setattr(app_main, "ClipRecorder", Recorder)
     monkeypatch.setattr(app_main, "make_backend", slow_load)

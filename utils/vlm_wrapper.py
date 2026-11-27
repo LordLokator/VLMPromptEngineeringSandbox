@@ -8,11 +8,14 @@ from typing import Any
 from loguru import logger
 
 from prompting.prompting import Prompt
+from utils.errors import DecodeError
 
 MAX_NEW_TOKENS = 1024
 MODEL_PATH = "DAMO-NLP-SG/VideoLLaMA3-7B"
 # Pinned because trust_remote_code=True runs code from the repo. HF DAMO-NLP-SG/VideoLLaMA3-7B,
 # last modified 2025-09-02, checked 2026-11-25.
+# When changing this or how the model is loaded, review the reasons in osv-scanner.toml, and recheck the video
+# loader facts at DECORD_MAX_SECONDS and in RuntimeSettings.effective_resample_fps.
 MODEL_REVISION = "d5b763e368861e7f5096e7ff1b49f92fbccf8ae6"
 DEVICE = "cuda:0"
 # Override e.g. on pre-Ampere GPUs or without flash-attn installed.
@@ -48,6 +51,10 @@ def _pinned_snapshot() -> str:
     return snapshot_download(MODEL_PATH, revision=MODEL_REVISION)
 
 
+class ClipError(DecodeError, ValueError):
+    """A recorded clip the loader cannot take."""
+
+
 def _clip_seconds(video_path: str) -> float:
     """Length of a recorded clip, from its container's frame count and frame rate."""
     import cv2
@@ -58,10 +65,10 @@ def _clip_seconds(video_path: str) -> float:
     finally:
         capture.release()
     if frames <= 0 or fps <= 0:
-        raise ValueError(f"Cannot read the length of clip {video_path}")
+        raise ClipError(f"Cannot read the length of clip {video_path}")
     seconds = frames / fps
     if seconds >= DECORD_MAX_SECONDS:
-        raise ValueError(f"Clip is {seconds:.2f} s long; it must be shorter than {DECORD_MAX_SECONDS:.0f} s")
+        raise ClipError(f"Clip is {seconds:.2f} s long; it must be shorter than {DECORD_MAX_SECONDS:.0f} s")
     return seconds
 
 

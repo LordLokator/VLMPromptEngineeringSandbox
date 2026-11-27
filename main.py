@@ -1,6 +1,5 @@
 # main.py
 import signal
-import sys
 import threading
 import time
 import timeit
@@ -13,11 +12,10 @@ from concurrent.futures import ThreadPoolExecutor
 from prompting.prompting import Prompt, RuntimeSettings
 from utils import telemetry
 from utils.backends import make_backend
+from utils.errors import log_failure
+from utils.logging_setup import configure_logging, route_stdlib_logging
 from web_engine import start_server_threaded, broadcast_sync, emit
 from video_handling.clip_handling import ClipRecorder
-
-logger.remove()
-logger.add(sys.stderr, level="DEBUG")
 
 FPS = 10
 SEC = 0.5 # Buffer in seconds
@@ -62,8 +60,8 @@ def process_clip(
 
     except Exception as e:  # noqa: BLE001 - worker boundary: logged and reported to the UI
         # Inference can fail in many ways (CUDA, decoding, model); the worker must survive and tell the UI.
-        logger.exception("Failed to process clip")
-        broadcast(emit("error", f"Failed to process: {e}"))
+        message = log_failure("Failed to process clip", e)
+        broadcast(emit("error", f"Failed to process: {message}"))
 
     finally:
         # README promises clips are deleted after inference.
@@ -133,6 +131,7 @@ def shutdown(
 
 
 def main():
+    configure_logging()
     logger.info("Main app initialization...")
 
     # Install handlers before the slow startup (model load) so Ctrl+C always reaches a clean shutdown.
@@ -165,6 +164,7 @@ def main():
     try:
         # Instantiate the backend (VLM_BACKEND, default: local HF model)
         vlm = make_backend(prompt)
+        route_stdlib_logging()  # libraries imported while loading may have added their own handlers
 
         if not stop_event.is_set():
             executor = ThreadPoolExecutor(max_workers=1)
