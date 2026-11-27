@@ -207,7 +207,10 @@ async def post_preset(request: Request):
 def make_server() -> uvicorn.Server:
     if not IS_LOOPBACK:
         logger.warning(f"Binding to {HOST}: the server has no authentication, anyone on the network can use it.")
-    config = uvicorn.Config("web_engine:app", host=HOST, port=PORT, reload=False, ws_max_size=WS_MAX_BYTES)
+    # log_config=None: uvicorn adds no handlers of its own, so its records reach the redacting sink.
+    config = uvicorn.Config(
+        "web_engine:app", host=HOST, port=PORT, reload=False, ws_max_size=WS_MAX_BYTES, log_config=None
+    )
     return uvicorn.Server(config)
 
 
@@ -232,7 +235,7 @@ async def broadcast(message: dict) -> None:
 
     for ws, result in zip(sockets, results, strict=True):
         if isinstance(result, BaseException):
-            logger.error(f"Failed to send, dropping connection: {result!r}")
+            logger.error(f"Failed to send, dropping connection: {type(result).__name__}")
             if ws in active_connections:
                 active_connections.remove(ws)
 

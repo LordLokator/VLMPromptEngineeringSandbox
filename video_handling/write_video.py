@@ -25,5 +25,5 @@ def write_video(frames: list[np.ndarray], video_path: str, fps: int = 60):
         return True
 
     except Exception as e:
-        logger.error(f"{type(e).__name__} at Video Writing: {e}")
+        logger.error(f"{type(e).__name__} at Video Writing")
         raise

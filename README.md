@@ -126,7 +126,7 @@ Design choices:
 | `system` | none | sender | Acknowledges an update or a source toggle. |
 | `system` | `muted: true` | all clients | A clip was skipped because the model was busy. |
 | `error` | none | sender | A frame or setting was rejected. |
-| `error` | none | all clients | Inference or the capture source failed. |
+| `error` | none | all clients | Inference or the capture source failed. The text names a kind of failure, the exception class and any HTTP status, never the exception message. |
 
 ```mermaid
 sequenceDiagram
@@ -175,6 +175,14 @@ All environment variables are optional.
 | `OTEL_ENABLED`, `OTEL_*` | off | See [Observability](#observability-opentelemetry). |
 
 Files: user presets go to `presets/user_presets.json`, prompt history to `prompting/history.json`.
+
+**Logs and errors:** logs go to stderr. Python's standard `logging` (uvicorn included), warnings and uncaught errors take
+the same path. Tracebacks do not print local variable values. For backend and capture failures the log keeps the kind of
+failure, the exception class, any HTTP status and the stack, not the exception message. The values of `OPENAI_API_KEY`,
+`ANTHROPIC_API_KEY`, `VLM_COMPAT_API_KEY`, `HF_TOKEN` and `HUGGING_FACE_HUB_TOKEN`, if set and at least 8 characters
+long, are replaced with `[redacted]` in log text. Output that bypasses Python logging, such as messages from native
+libraries or the OpenTelemetry console exporter, is not filtered. No API provider exists yet, so no key is used by the app
+itself.
 
 ## Hardware and performance
 
