@@ -1,7 +1,15 @@
 import threading
 from concurrent.futures import ThreadPoolExecutor
 
+import pytest
+
 from main import make_clip_handler, process_clip
+from video_handling.clip_handling import ClipSample
+from video_handling.streaming import CaptureHub
+
+
+def sample(path="c.mp4", epoch=0):
+    return ClipSample(0, "sample:1", epoch, "Sample 1", 0.0, 0.5, 0, str(path))
 
 
 class FakeVLM:
@@ -16,9 +24,12 @@ class FakeVLM:
         return "a car", temperature
 
 
-def run(vlm, temp=0.5, clip="c.mp4", fps=10):
+def run(vlm, temp=0.5, clip="c.mp4", fps=10, epoch=lambda: 0):
     sent = []
-    process_clip(str(clip), vlm, sent.append, get_temperature=lambda: temp, get_fps=lambda: fps, max_frames=20)
+    process_clip(
+        sample(clip), vlm, sent.append,
+        get_temperature=lambda: temp, get_fps=lambda: fps, get_source_epoch=epoch, max_frames=20,
+    )
     return sent
 
 
@@ -27,6 +38,28 @@ def test_ok_message():
     assert msg["type"] == "vlm"
     assert msg["text"] == "a car"
     assert msg["delay"] >= 0
+
+
+@pytest.mark.parametrize("fail", [False, True], ids=["answer", "error"])
+def test_a_slow_result_after_a_switch_is_dropped(tmp_path, fail):
+    hub = CaptureHub()  # never started
+    clip = tmp_path / "c.mp4"
+    clip.write_bytes(b"x")
+
+    class SwitchedWhileThinking(FakeVLM):
+        def forward(self, video_path, fps, max_frames, temperature):
+            hub.select("sample:2")
+            return super().forward(video_path, fps, max_frames, temperature)
+
+    assert run(SwitchedWhileThinking(fail=fail), clip=clip, epoch=lambda: hub.spec.source_epoch) == []
+    assert not clip.exists()
+
+
+def test_a_clip_from_before_a_switch_and_back_is_still_stale():
+    hub = CaptureHub()
+    hub.select("sample:2")
+    hub.select("sample:1")  # the same source again, but a later epoch
+    assert run(FakeVLM(), epoch=lambda: hub.spec.source_epoch) == []
 
 
 def test_error_message():
@@ -76,8 +109,8 @@ def test_busy_clip_is_dropped_and_deleted(tmp_path):
     for f in (a, b, c):
         f.write_bytes(b"x")
 
-    handler(str(a))
-    handler(str(b))  # first still running -> dropped and deleted
+    handler(sample(a))
+    handler(sample(b))  # first still running -> dropped and deleted
     assert not b.exists()
     gate.set()
     assert finished.acquire(timeout=5)
@@ -85,10 +118,10 @@ def test_busy_clip_is_dropped_and_deleted(tmp_path):
 
     executor = ThreadPoolExecutor(max_workers=1)
     handler = make_clip_handler(process, executor, threading.Lock())
-    handler(str(c))
+    handler(sample(c))
     assert finished.acquire(timeout=5)
     executor.shutdown(wait=True)
-    assert calls == [str(a), str(c)]
+    assert [clip.video_path for clip in calls] == [str(a), str(c)]
 
 
 def test_drop_notice_is_rate_limited(tmp_path):
@@ -103,7 +136,7 @@ def test_drop_notice_is_rate_limited(tmp_path):
         now[0] = t
         f = tmp_path / f"c{t}.mp4"
         f.write_bytes(b"x")
-        handler(str(f))
+        handler(sample(f))
         assert not f.exists()
     assert len(notices) == 2
     assert notices[0]["type"] == "system" and notices[0]["muted"] is True
@@ -120,6 +153,10 @@ def test_shutdown_order_and_speed():
         def stop(self):
             order.append("recorder")
 
+    class Hub:
+        def stop(self):
+            order.append("hub")
+
     class Exe:
         def shutdown(self, wait, cancel_futures):
             order.append("executor")
@@ -129,8 +166,8 @@ def test_shutdown_order_and_speed():
 
     srv = Srv()
     t0 = time.monotonic()
-    shutdown(Rec(), Exe(), srv, threading.Lock())
-    assert order == ["recorder", "executor"]
+    shutdown(Hub(), Rec(), Exe(), srv, threading.Lock())
+    assert order == ["recorder", "hub", "executor"]
     assert srv.should_exit is True
     assert time.monotonic() - t0 < 2
 
@@ -152,12 +189,15 @@ def test_shutdown_gives_up_on_stuck_inference():
         should_exit = False
 
     srv = Srv()
-    shutdown(Noop(), Noop(), srv, busy, timeout=0.1)
+    shutdown(Noop(), Noop(), Noop(), srv, busy, timeout=0.1)
     assert srv.should_exit is True
 
 
 def test_signal_during_backend_load_exits_cleanly(monkeypatch):
-    """Handlers are installed before the slow load; a signal then skips the recorder and still shuts down."""
+    """Handlers are installed before the slow load; a signal then skips the recorder and still shuts down.
+
+    The capture is already running at that point: it does not wait for a backend.
+    """
     import signal
     import main as app_main
 
@@ -168,8 +208,18 @@ def test_signal_during_backend_load_exits_cleanly(monkeypatch):
     class Server:
         should_exit = False
 
-    class Recorder:
+    class Hub:
         def __init__(self, **_):
+            pass
+
+        def start(self):
+            events.append("capture start")
+
+        def stop(self):
+            events.append("capture stop")
+
+    class Recorder:
+        def __init__(self, *_args, **_kwargs):
             pass
 
         def start(self, **_):
@@ -179,6 +229,7 @@ def test_signal_during_backend_load_exits_cleanly(monkeypatch):
             events.append("stop")
 
     def slow_load(_prompt):
+        events.append("load")
         handlers[signal.SIGINT](signal.SIGINT, None)  # Ctrl+C while the model "loads"
         return object()
 
@@ -186,10 +237,11 @@ def test_signal_during_backend_load_exits_cleanly(monkeypatch):
     monkeypatch.setattr(app_main, "configure_logging", lambda: None)  # would replace global hooks
     monkeypatch.setattr(app_main, "route_stdlib_logging", lambda: None)
     monkeypatch.setattr(app_main, "start_server_threaded", lambda *_: server)
+    monkeypatch.setattr(app_main, "CaptureHub", Hub)
     monkeypatch.setattr(app_main, "ClipRecorder", Recorder)
     monkeypatch.setattr(app_main, "make_backend", slow_load)
 
     app_main.main()
 
-    assert events == ["stop"]
+    assert events == ["capture start", "load", "stop", "capture stop"]
     assert server.should_exit is True

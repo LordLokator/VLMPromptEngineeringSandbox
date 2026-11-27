@@ -28,8 +28,12 @@
 - **Live prompt iteration:** the next clip that goes to the model uses the new prompt.
 - **Runtime controls:** temperature (0.01 to 1.0) and resample FPS (slider 1 to 10). The reply shows the effective
   rate; a 5-frame clip allows only a few: see [Limitations](#limitations).
-- **Two sources:** the bundled street videos (default) or a webcam, switched from the UI. The webcam is the one attached to
-  the **server** machine, not the browser's.
+- **Two sources:** the first bundled street video (default, looping) or a webcam, switched from the UI. The second
+  bundled video cannot be selected at the moment; source selection is planned (see
+  [Roadmap](#roadmap-compare-two-models)). The webcam is the one attached to the **server** machine, not the browser's.
+- **One capture:** the browser preview and the model's clips come from the same decoder, and the video plays from app
+  start, also while the model is still loading. The preview is scaled down to at most 720 px high; clips keep the
+  source resolution.
 - **Presets:** nine built-in street-scene prompts (dominant action, crossing, vehicle types, groups, unusual behaviour,
   activity level, sunlight, parking events, OCR); save your own from the UI.
 - **Prompt history:** each prompt change is logged with a timestamp.
@@ -72,11 +76,12 @@ No GPU? You cannot run the app, but you can run the [tests](#development).
 
 ```mermaid
 flowchart LR
-    SRC["Video source<br/>sample files or server webcam"]
+    SRC["Video source<br/>sample file or server webcam"]
     UI["Browser UI<br/>vanilla JS"]
 
     subgraph APP["python main.py (one process)"]
-        REC["ClipRecorder thread<br/>0.5 s clips at 10 FPS, temp .mp4"]
+        CAP["Capture thread<br/>the only decoder"]
+        REC["ClipRecorder<br/>0.5 s clips at 10 FPS, temp .mp4"]
         GATE{"Model busy?"}
         EXEC["Inference worker<br/>single thread"]
         BACK["Backend seam<br/>utils/backends.py"]
@@ -85,13 +90,14 @@ flowchart LR
         WEB["FastAPI + uvicorn thread"]
     end
 
-    SRC --> REC --> GATE
+    SRC --> CAP
+    CAP -- "frames, sampled by timestamp" --> REC --> GATE
     GATE -- yes --> DROP["Delete clip, count it,<br/>notify UI (rate-limited)"]
     GATE -- no --> EXEC --> BACK --> VLM
     VLM -- text --> EXEC
     EXEC -- broadcast --> WEB
     DROP -- broadcast --> WEB
-    SRC -- separate decoder --> WEB
+    CAP -- "latest frame" --> WEB
     WEB <-- "WebSocket /ws" --> UI
     WEB -- "MJPEG /video_feed" --> UI
     WEB -- writes --> STATE
@@ -100,6 +106,16 @@ flowchart LR
 
 Design choices:
 
+- **One decoder per source.** A capture thread plays the selected source at its own speed. Clips sample it on a 10 FPS
+  grid by frame timestamp (each point takes the latest frame at or before it), and never span two sources or the point
+  where a file starts over. If timestamps stall or go backwards, the frame rate is used instead (30 FPS if the reported
+  one is implausible). A file shorter than a clip holds its last frame. Writing clips happens on another thread.
+- **A failed source stays failed** until a source is selected again (the toggle): a file that yields no frames, a missing
+  webcam, or one whose reads keep failing for 3 s. A camera read that never returns raises no error and delays a switch.
+  After an error the preview shows an error image, and no clips are cut from it.
+- **Each clip knows its moment:** source, source change counter, start and end time and loop number (webcam: wall-clock
+  time). A result, answer or error, for a clip from before the last source switch is not shown. The page does not
+  display these times yet.
 - **One inference at a time, no queue.** Clips that arrive while the model is busy are dropped, so answers do not fall
   further and further behind the video.
 - **A backend is one method:** `forward(video_path, fps, max_frames, temperature) -> (text, temperature)`.
@@ -116,7 +132,7 @@ Design choices:
 | Message | Shape | Effect |
 |---|---|---|
 | Update | `{"role": "user", "text": str, "temperature"?: number, "resample_fps"?: int}` | Applies the settings (clamped to range) and, if `text` is not empty, sets the prompt. |
-| Toggle source | `{"role": "user", "text": "toggle_stream"}` | Switches between sample video and webcam, **for all clients**. `toggle_stream` is therefore a reserved prompt. |
+| Toggle source | `{"role": "user", "text": "toggle_stream"}` | Switches between the first sample video and the webcam, **for all clients**. `toggle_stream` is therefore a reserved prompt. |
 
 **Server to client:** one envelope, `{"type": ..., "text": str}`
 
@@ -157,7 +173,7 @@ another origin are rejected (code 1008). HTTP requests and WebSocket connections
 | `GET /` | Web UI (static assets under `/src`) |
 | `GET /favicon.ico` | Page icon |
 | `GET /presets/<file>` | Static files from `presets/`, including saved user presets |
-| `GET /video_feed` | MJPEG stream of the active source |
+| `GET /video_feed` | MJPEG preview of the active source, at most 720 px high |
 | `GET /preset_buttons` | Built-in and user presets, as a list of `{"label", "text"}` |
 | `POST /save_preset` | JSON `{"label", "text"}`; the label is trimmed to 25 characters. Returns `{"status": "ok", "label"}`, or an error with status 400 or 415. |
 
@@ -206,7 +222,10 @@ Measured by the author on Ubuntu + RTX 4090 (24 GB), with the university version
 - **Not run on a GPU** since the overhaul, which changed the model wrapper and the setup script, or since the ML pin
   upgrade or the switch to the `decord` video path. Loading the real weights and generating real answers are untested.
 - **Localhost only:** there is no authentication, and settings and source are shared by all connected clients.
-- **Video and answers are not synchronised:** the browser stream and the model's clips come from separate decoders.
+- **Answers lag the video:** an answer is about a half-second moment that has passed on screen by the time it arrives,
+  and the page does not say which one.
+- **Capture is tested with fake and generated video only:** not with a real webcam, and not by watching the preview in a
+  browser. The capture error message is sent once, so a page opened later shows only the error image.
 - **No temporal memory:** each 0.5 s clip is answered on its own. Output arrives as a whole message, not token by token.
 - **Resample FPS is coarse:** a 0.5 s clip has only 5 frames. Slider values 1 and 2 give the model 1 frame (shown as
   2 fps), 3 to 5 give 2 frames (4 fps), and 6 to 10 give all 5 (10 fps).
@@ -320,7 +339,8 @@ OpenTelemetry (see [Observability](#observability-opentelemetry)).
 
 ## Development
 
-No GPU needed: the model is mocked in tests.
+No GPU needed: the model is mocked in tests. Tests under `tests/manual/` need a real device or file and are skipped
+unless `VLM_MANUAL_TESTS=1`; their docstring says what they use.
 
 ```bash
 pip install ".[dev]"

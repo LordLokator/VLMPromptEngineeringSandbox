@@ -5,7 +5,7 @@ from fastapi.testclient import TestClient
 
 import web_engine
 from prompting.prompting import RuntimeSettings
-from video_handling.streaming import USE_LIVE_CAMERA
+from video_handling.streaming import CaptureHub
 
 
 class StubPrompt:
@@ -20,13 +20,15 @@ class StubPrompt:
 def client(monkeypatch):
     stub = StubPrompt()
     monkeypatch.setattr(web_engine.app.state, "prompt", stub, raising=False)
-    monkeypatch.setitem(USE_LIVE_CAMERA, "value", False)
+    hub = CaptureHub()  # never started, so no source is opened
+    monkeypatch.setattr(web_engine.app.state, "hub", hub, raising=False)
     settings = RuntimeSettings()
     monkeypatch.setattr(web_engine.app.state, "settings", settings, raising=False)
     web_engine.active_connections.clear()
     client = TestClient(web_engine.app)
     client.stub = stub
     client.settings = settings
+    client.hub = hub
     return client
 
 
@@ -34,7 +36,10 @@ def test_toggle_stream_echo(client):
     with client.websocket_connect("/ws") as ws:
         ws.send_text(json.dumps({"role": "user", "text": "toggle_stream"}))
         assert ws.receive_json() == {"type": "system", "text": "Switched to: Live camera"}
-    assert USE_LIVE_CAMERA["value"] is True
+        assert (client.hub.spec.source_key, client.hub.spec.source_epoch) == ("webcam", 1)
+        ws.send_text(json.dumps({"role": "user", "text": "toggle_stream"}))
+        assert ws.receive_json() == {"type": "system", "text": "Switched to: Static video"}
+    assert (client.hub.spec.source_key, client.hub.spec.source_epoch) == ("sample:1", 2)
 
 
 def test_prompt_change_echo(client):

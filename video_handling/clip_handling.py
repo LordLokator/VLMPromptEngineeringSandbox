@@ -2,100 +2,106 @@
 
 import glob
 import os
+import queue
 import threading
-import time
-from typing import Callable
+from dataclasses import dataclass
+from typing import Any, Callable
 from loguru import logger
 
 from utils.errors import log_failure
 from utils.file_management import BASE_DIR, delete_files, full_path
+from video_handling.sampling import GridSampler, Segment
+from video_handling.streaming import CaptureHub
 from video_handling.write_video import write_video
-from video_handling.streaming import USE_LIVE_CAMERA, get_stream_source
+
+MAX_PENDING_CLIPS = 2
+
+
+@dataclass(frozen=True)
+class ClipSample:
+    """A written clip and the moment it shows."""
+
+    clip_id: int  # unique within one run of the app
+    source_key: str
+    source_epoch: int  # an epoch other than the current one means the source has changed since
+    label: str
+    start_s: float  # seconds into the file; for the webcam, wall-clock (Unix) seconds
+    end_s: float
+    loop: int | None  # pass through the file, from 0; None for the webcam
+    video_path: str
 
 
 class ClipRecorder:
-    def __init__(self, buffer_seconds: float = 3, fps: int = 10):
+    """Cuts clips from the hub's frames by their timestamps and writes them on its own thread."""
+
+    def __init__(self, hub: CaptureHub, buffer_seconds: float = 3, fps: int = 10):
+        self.hub = hub
         self.buffer_seconds = buffer_seconds
         self.fps = fps
         self.out_dir = str(BASE_DIR / "tmp")
         self.running = False
         self.counter = 0
-        self.on_error: Callable[[str], None] | None = None
         self._thread: threading.Thread | None = None
-        self.flush_callback: Callable = lambda path: logger.debug(f"Clip flushed: {path}")
+        self.flush_callback: Callable[[ClipSample], None] = lambda clip: logger.debug(f"Clip flushed: {clip}")
+        self._sampler = GridSampler(fps, round(buffer_seconds * fps), self._enqueue)
+        self._pending: queue.Queue[tuple[Segment, float, list[Any]]] = queue.Queue(maxsize=MAX_PENDING_CLIPS)
 
         # Create '<repo>/tmp' if it doesn't exists:
         os.makedirs(self.out_dir, exist_ok=True)
         # ... clean if it does:
         delete_files(glob.glob(os.path.join(self.out_dir, "*.mp4")))
 
-    def _open(self):
-        return get_stream_source(paced=False, sample_fps=self.fps)
+    def _enqueue(self, segment: Segment, start_t: float, frames: list[Any], times: list[float]) -> None:
+        """Runs on the capture thread: never blocks. If writing falls behind, the oldest waiting clip goes."""
+        while True:
+            try:
+                self._pending.put_nowait((segment, start_t, frames))
+                return
+            except queue.Full:
+                try:
+                    self._pending.get_nowait()
+                    logger.warning("Clip writing is falling behind, dropped a clip.")
+                except queue.Empty:
+                    pass
 
     def _run(self):
         logger.info("ClipRecorder started.")
-        stream = None
         try:
-            open_mode = USE_LIVE_CAMERA["value"]
-            stream = self._open()
-
             while self.running:
-                # Camera toggle: reopen the source at the next clip boundary.
-                if USE_LIVE_CAMERA["value"] != open_mode:
-                    logger.info("Capture mode changed, reopening stream.")
-                    stream.close()
-                    open_mode = USE_LIVE_CAMERA["value"]
-                    stream = self._open()
-
-                frames = []
-                target_frames = int(self.buffer_seconds * self.fps)
-                frame_interval = 1 / self.fps
-                next_t = time.monotonic()
-
-                while self.running and len(frames) < target_frames:
-                    try:
-                        frames.append(next(stream).copy())
-                    except StopIteration:
-                        logger.warning("Stream ended, restarting...")
-                        stream = self._open()
-                        continue
-                    except Exception as e:  # noqa: BLE001 - capture boundary (cv2.error is no RuntimeError)
-                        message = log_failure("Capture source failed", e)
-                        self.running = False
-                        if self.on_error is not None:
-                            self.on_error(f"Capture source failed: {message}")
-                        return
-
-                    # Pace once, by timestamp (the source itself is unpaced here).
-                    next_t += frame_interval
-                    time.sleep(max(0.0, next_t - time.monotonic()))
-
+                try:
+                    segment, start_t, frames = self._pending.get(timeout=0.1)
+                except queue.Empty:
+                    continue
                 if not self.running:
-                    break  # stopped mid-clip: do not flush a partial clip
+                    break
 
-                filename = f"{self.out_dir}/clip_{self.counter:03d}.mp4"
+                clip_id = self.counter
+                filename = f"{self.out_dir}/clip_{clip_id:03d}.mp4"
                 self.counter += 1
 
                 try:
                     write_video(frames, filename, fps=self.fps)
                     full_pathname = full_path(filename)
                     logger.debug(f"Calling flush_callback with: {full_pathname}")
-                    self.flush_callback(full_pathname)
+                    start_s = segment.base_s + start_t
+                    self.flush_callback(ClipSample(
+                        clip_id=clip_id,
+                        source_key=segment.spec.source_key,
+                        source_epoch=segment.spec.source_epoch,
+                        label=segment.spec.label,
+                        start_s=start_s,
+                        end_s=start_s + len(frames) / self.fps,
+                        loop=segment.loop,
+                        video_path=full_pathname,
+                    ))
 
                 except Exception as e:  # noqa: BLE001 - worker boundary: logged, the recorder keeps running
                     log_failure("Video writing or callback failed", e)
         finally:
-            if stream is not None:
-                stream.close()
             logger.info("ClipRecorder stopped.")
 
-    def start(
-            self,
-            flush_callback: Callable = lambda _: None,
-            on_error: Callable[[str], None] | None = None,
-    ):
+    def start(self, flush_callback: Callable[[ClipSample], None] = lambda _: None):
         self.flush_callback = flush_callback
-        self.on_error = on_error
         self.running = True
 
         self._thread = threading.Thread(
@@ -103,9 +109,11 @@ class ClipRecorder:
             daemon=True
         )
         self._thread.start()
+        self.hub.add_sink(self._sampler)
 
     def stop(self, timeout: float = 2.0):
-        """Stop capturing, wait for the thread (it closes the stream), then delete leftover clips."""
+        """Stop cutting clips, wait for the writer thread, then delete leftover clips."""
+        self.hub.remove_sink(self._sampler)
         self.running = False
         thread = self._thread
         if thread is not None and thread.is_alive() and thread is not threading.current_thread():

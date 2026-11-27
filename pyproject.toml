@@ -90,7 +90,10 @@ select = ["E", "F", "B", "T20", "BLE", "S104"]
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 pythonpath = ["."]
-markers = ["real_clip: read the clip length from a real file instead of the stub"]
+markers = [
+    "real_clip: read the clip length from a real file instead of the stub",
+    "manual: needs a real device or file; skipped unless VLM_MANUAL_TESTS=1",
+]
 
 # Pylance/pyright: resolve imports from a local ./.venv (pip install -e ".[dev,otel]"). torch and
 # transformers are intentionally absent there (GPU extra, imported lazily in utils/vlm_wrapper.py).

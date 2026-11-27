@@ -7,8 +7,13 @@ import pytest
 
 from main import make_clip_handler, process_clip
 from utils import telemetry
+from video_handling.clip_handling import ClipSample
 
 PROMPT = "SECRET-PROMPT-TEXT"
+
+
+def sample(path):
+    return ClipSample(0, "sample:1", 0, "Sample 1", 0.0, 0.5, 0, str(path))
 
 
 class FakeVLM:
@@ -28,7 +33,10 @@ class GoodVLM(FakeVLM):
 
 
 def run(vlm):
-    process_clip("c.mp4", vlm, lambda m: None, get_temperature=lambda: 0.5, get_fps=lambda: 3, max_frames=20)
+    process_clip(
+        sample("c.mp4"), vlm, lambda m: None,
+        get_temperature=lambda: 0.5, get_fps=lambda: 3, get_source_epoch=lambda: 0, max_frames=20,
+    )
 
 
 def test_disabled_imports_no_opentelemetry():
@@ -122,8 +130,8 @@ def test_drop_counter_increments_when_busy(otel, tmp_path):
     a, b = tmp_path / "a", tmp_path / "b"
     a.write_bytes(b"x")
     b.write_bytes(b"x")
-    handler(str(a))
-    handler(str(b))
+    handler(sample(a))
+    handler(sample(b))
     gate.set()
     executor.shutdown(wait=True)
     assert points(reader)["vlm.clips.dropped"][0].value == 1
