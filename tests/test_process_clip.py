@@ -120,6 +120,10 @@ def test_shutdown_order_and_speed():
         def stop(self):
             order.append("recorder")
 
+    class Hub:
+        def stop(self):
+            order.append("hub")
+
     class Exe:
         def shutdown(self, wait, cancel_futures):
             order.append("executor")
@@ -129,8 +133,8 @@ def test_shutdown_order_and_speed():
 
     srv = Srv()
     t0 = time.monotonic()
-    shutdown(Rec(), Exe(), srv, threading.Lock())
-    assert order == ["recorder", "executor"]
+    shutdown(Hub(), Rec(), Exe(), srv, threading.Lock())
+    assert order == ["recorder", "hub", "executor"]
     assert srv.should_exit is True
     assert time.monotonic() - t0 < 2
 
@@ -152,12 +156,15 @@ def test_shutdown_gives_up_on_stuck_inference():
         should_exit = False
 
     srv = Srv()
-    shutdown(Noop(), Noop(), srv, busy, timeout=0.1)
+    shutdown(Noop(), Noop(), Noop(), srv, busy, timeout=0.1)
     assert srv.should_exit is True
 
 
 def test_signal_during_backend_load_exits_cleanly(monkeypatch):
-    """Handlers are installed before the slow load; a signal then skips the recorder and still shuts down."""
+    """Handlers are installed before the slow load; a signal then skips the recorder and still shuts down.
+
+    The capture is already running at that point: it does not wait for a backend.
+    """
     import signal
     import main as app_main
 
@@ -168,8 +175,18 @@ def test_signal_during_backend_load_exits_cleanly(monkeypatch):
     class Server:
         should_exit = False
 
-    class Recorder:
+    class Hub:
         def __init__(self, **_):
+            pass
+
+        def start(self):
+            events.append("capture start")
+
+        def stop(self):
+            events.append("capture stop")
+
+    class Recorder:
+        def __init__(self, *_args, **_kwargs):
             pass
 
         def start(self, **_):
@@ -179,6 +196,7 @@ def test_signal_during_backend_load_exits_cleanly(monkeypatch):
             events.append("stop")
 
     def slow_load(_prompt):
+        events.append("load")
         handlers[signal.SIGINT](signal.SIGINT, None)  # Ctrl+C while the model "loads"
         return object()
 
@@ -186,10 +204,11 @@ def test_signal_during_backend_load_exits_cleanly(monkeypatch):
     monkeypatch.setattr(app_main, "configure_logging", lambda: None)  # would replace global hooks
     monkeypatch.setattr(app_main, "route_stdlib_logging", lambda: None)
     monkeypatch.setattr(app_main, "start_server_threaded", lambda *_: server)
+    monkeypatch.setattr(app_main, "CaptureHub", Hub)
     monkeypatch.setattr(app_main, "ClipRecorder", Recorder)
     monkeypatch.setattr(app_main, "make_backend", slow_load)
 
     app_main.main()
 
-    assert events == ["stop"]
+    assert events == ["capture start", "load", "stop", "capture stop"]
     assert server.should_exit is True

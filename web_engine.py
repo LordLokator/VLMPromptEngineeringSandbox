@@ -16,7 +16,7 @@ import uvicorn
 from utils import telemetry
 from utils.hosts import LOOPBACK_HOSTS, parse_allowed_hosts, require_extra_hosts
 from utils.file_management import BASE_DIR
-from video_handling.streaming import video_stream_generator, USE_LIVE_CAMERA
+from video_handling.streaming import mjpeg_stream
 
 HOST: str = os.environ.get("VLM_HOST", "127.0.0.1")
 PORT: int = int(os.environ.get("VLM_PORT", "8000"))
@@ -124,8 +124,7 @@ async def websocket_endpoint(ws: WebSocket):
             # Handle user commands
             if role == "user":
                 if text == "toggle_stream":
-                    USE_LIVE_CAMERA["value"] = not USE_LIVE_CAMERA["value"]
-                    new_mode = "Live camera" if USE_LIVE_CAMERA["value"] else "Static video"
+                    new_mode = "Live camera" if ws.app.state.hub.toggle().is_webcam else "Static video"
                     system_msg = emit("system", f"Switched to: {new_mode}")
                     await ws.send_text(json.dumps(system_msg))
 
@@ -166,9 +165,9 @@ async def websocket_endpoint(ws: WebSocket):
 
 
 @app.get("/video_feed")
-def video_feed():
+def video_feed(request: Request):
     return StreamingResponse(
-        video_stream_generator(),
+        mjpeg_stream(request.app.state.hub),
         media_type="multipart/x-mixed-replace; boundary=frame"
     )
 
@@ -249,11 +248,12 @@ async def broadcast(message: dict) -> None:
                 active_connections.remove(ws)
 
 
-def start_server_threaded(prompt=None, settings=None) -> uvicorn.Server:
+def start_server_threaded(prompt=None, settings=None, hub=None) -> uvicorn.Server:
     """Run uvicorn in a daemon thread; set `.should_exit = True` on the returned server to stop it."""
 
     app.state.prompt = prompt
     app.state.settings = settings
+    app.state.hub = hub
     telemetry.setup_telemetry(app)
 
     server = make_server()

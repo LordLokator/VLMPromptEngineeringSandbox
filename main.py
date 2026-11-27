@@ -16,6 +16,7 @@ from utils.errors import log_failure
 from utils.logging_setup import configure_logging, route_stdlib_logging
 from web_engine import start_server_threaded, broadcast_sync, emit
 from video_handling.clip_handling import ClipRecorder
+from video_handling.streaming import CaptureHub
 
 FPS = 10
 SEC = 0.5 # Buffer in seconds
@@ -113,7 +114,7 @@ def make_clip_handler(
 
 
 def shutdown(
-    recorder, executor: ThreadPoolExecutor | None, server, busy: threading.Lock, timeout: float = 5.0
+    hub, recorder, executor: ThreadPoolExecutor | None, server, busy: threading.Lock, timeout: float = 5.0
 ) -> None:
     """Stop capturing first, let the in-flight inference finish (bounded), then stop the web server.
 
@@ -121,6 +122,7 @@ def shutdown(
     """
     logger.info("Shutting down...")
     recorder.stop()
+    hub.stop()  # also ends the preview streams
     if executor is not None:
         executor.shutdown(wait=False, cancel_futures=True)
     if busy.acquire(timeout=timeout):
@@ -150,11 +152,15 @@ def main():
     prompt = Prompt()
     settings = RuntimeSettings(clip_fps=FPS, clip_seconds=SEC)
 
-    # Start server in separate thread
-    server = start_server_threaded(prompt, settings)
+    # The only capture; the preview and the clip recorder both read from it. Not started yet.
+    hub = CaptureHub(min_pass_s=SEC, on_error=lambda text: broadcast_sync(emit("error", text)))
 
-    # Create Video stream (not started yet)
+    # Start server in separate thread
+    server = start_server_threaded(prompt, settings, hub)
+
+    # Cuts clips once a backend is there to take them (not started yet)
     recorder = ClipRecorder(
+        hub,
         buffer_seconds=SEC,
         fps=FPS
     )
@@ -162,6 +168,8 @@ def main():
     executor: ThreadPoolExecutor | None = None
     busy = threading.Lock()
     try:
+        hub.start()  # the video plays without, and before, any backend
+
         # Instantiate the backend (VLM_BACKEND, default: local HF model)
         vlm = make_backend(prompt)
         route_stdlib_logging()  # libraries imported while loading may have added their own handlers
@@ -177,13 +185,13 @@ def main():
                 max_frames=MAX_FRAMES,
             )
             on_clip_flush = make_clip_handler(process, executor, busy, notify=broadcast_sync)
-            recorder.start(flush_callback=on_clip_flush, on_error=lambda text: broadcast_sync(emit("error", text)))
+            recorder.start(flush_callback=on_clip_flush)
 
         # Short timeouts keep the main thread responsive to signals on every platform.
         while not stop_event.wait(0.5):
             pass
     finally:
-        shutdown(recorder, executor, server, busy)
+        shutdown(hub, recorder, executor, server, busy)
 
 
 if __name__ == "__main__":

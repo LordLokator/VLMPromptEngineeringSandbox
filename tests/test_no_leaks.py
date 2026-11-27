@@ -16,8 +16,10 @@ from main import process_clip
 from utils import logging_setup
 from utils.backends import ChainBackend
 from utils.logging_setup import REDACTED, configure_logging, redact
-from video_handling import clip_handling, streaming
+from video_handling import clip_handling, source, streaming
 from video_handling.clip_handling import ClipRecorder
+from video_handling.sampling import Segment
+from video_handling.streaming import CaptureHub
 
 # Configured as a key: redaction must remove it. Plain words, so that secret scanners do not take it for a real one.
 KEY = " ".join(("sentinel", "that", "stands", "for", "a", "key"))
@@ -185,19 +187,21 @@ def test_backend_failure_reaches_neither_log_nor_websocket(sink, monkeypatch, tm
     assert_clean(out)
 
 
-def test_non_runtime_capture_error_is_classified(sink, monkeypatch, tmp_path):
-    class Broken(_Frames):
-        def __next__(self):
+def test_non_runtime_capture_error_is_classified(sink):
+    class Broken:
+        def isOpened(self):
+            return True
+
+        def get(self, _prop):
+            return 10.0
+
+        def read(self):
             fail_with_value_error()
 
-    errors = []
-    recorder = ClipRecorder(buffer_seconds=0.3, fps=10)
-    recorder.out_dir = str(tmp_path)
-    monkeypatch.setattr(recorder, "_open", Broken)
-    recorder.start(on_error=errors.append)
-    assert recorder._thread is not None
-    recorder._thread.join(5)
-    assert errors == ["Capture source failed: Internal error (ValueError)"]
+        def release(self):
+            pass
+
+    assert capture_errors(lambda _spec: Broken()) == ["Capture source failed: Internal error (ValueError)"]
     assert f"bad frame for key {REDACTED}" not in sink.getvalue()
     assert_clean(sink.getvalue())
 
@@ -206,24 +210,24 @@ def fail_with_value_error():
     raise ValueError(f"bad frame for key {KEY}")
 
 
-class _Frames:
-    def __next__(self):
-        return np.zeros((2, 2, 3), dtype=np.uint8)
+def capture_errors(open_source):
+    errors = []
+    reported = threading.Event()
 
-    def close(self):
-        pass
+    def on_error(text):
+        errors.append(text)
+        reported.set()
+
+    hub = CaptureHub(open_source=open_source, on_error=on_error)
+    hub.start()
+    assert reported.wait(5)
+    hub.stop()
+    return errors
 
 
 def test_capture_and_clip_write_errors_carry_no_exception_text(sink, monkeypatch, tmp_path):
-    monkeypatch.setattr(streaming, "VIDEO_PATHS", [str(tmp_path / "private-dir" / "missing.mp4")])
-    monkeypatch.setattr(streaming, "VIDEO_IDX", 0)
-    monkeypatch.setitem(clip_handling.USE_LIVE_CAMERA, "value", False)
-    errors = []
-    recorder = ClipRecorder(buffer_seconds=0.3, fps=10)
-    recorder.out_dir = str(tmp_path)
-    recorder.start(on_error=errors.append)
-    assert recorder._thread is not None
-    recorder._thread.join(5)
+    monkeypatch.setattr(source, "SAMPLE_PATHS", [str(tmp_path / "private-dir" / "missing.mp4")])
+    errors = capture_errors(streaming.open_capture)
     assert len(errors) == 1 and "private-dir" not in errors[0] and "missing" not in errors[0]
     assert "private-dir" not in sink.getvalue()
 
@@ -234,8 +238,13 @@ def test_capture_and_clip_write_errors_carry_no_exception_text(sink, monkeypatch
         fail()
 
     monkeypatch.setattr(clip_handling, "write_video", broken_write)
-    monkeypatch.setattr(recorder, "_open", _Frames)
+    recorder = ClipRecorder(CaptureHub(), buffer_seconds=0.3, fps=10)
+    recorder.out_dir = str(tmp_path)
     recorder.start()
+    frame = np.zeros((2, 2, 3), dtype=np.uint8)
+    segment = Segment(recorder.hub.spec, 0, 0, 0.0)
+    recorder._sampler.feed(segment, 0.0, frame)
+    recorder._sampler.advance(segment, 0.3)
     assert attempted.wait(5)
     recorder.stop()
     out = sink.getvalue()
