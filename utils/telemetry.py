@@ -28,7 +28,7 @@ class _Telemetry:
 
 
 def enabled() -> bool:
-    return os.environ.get("OTEL_ENABLED") == "1"
+    return os.environ.get("OTEL_ENABLED", "").strip() == "1"
 
 
 def configure(tracer_provider: Any, meter_provider: Any) -> None:

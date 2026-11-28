@@ -1,3 +1,4 @@
+import contextlib
 import signal
 import sys
 import threading
@@ -9,14 +10,22 @@ from utils.logging_setup import configure_logging, route_stdlib_logging
 from utils.providers import PROVIDERS, GenerateRequest
 from utils.providers.agents import AgentConfigError, agent_spec_from_env
 from utils.providers.registry import SLOTS, AgentRegistry
-from utils.providers.settings import load_env_file
+from utils.providers.settings import ProviderConfigError, load_env_file
 from utils.rounds import RoundSettings, request_for
 from utils.session import CompareSession
 from utils.spend import SpendController
-from web_engine import IS_LOOPBACK, broadcast_sync, start_server_threaded
-from video_handling.clip_handling import ClipRecorder, ClipSample
-from video_handling.source import MEDIA
-from video_handling.streaming import CaptureHub
+
+if __name__ == "__main__":
+    # web_engine reads VLM_HOST, VLM_PORT and VLM_ALLOWED_HOSTS when it is imported, so .env loads first. Only for the
+    # entrypoint: importing main (the tests do) never reads a developer's .env.
+    with contextlib.suppress(ProviderConfigError):  # main() loads it again and reports the error
+        load_env_file()
+
+from utils import config  # noqa: E402
+from web_engine import IS_LOOPBACK, broadcast_sync, start_server_threaded  # noqa: E402
+from video_handling.clip_handling import ClipRecorder, ClipSample  # noqa: E402
+from video_handling.source import MEDIA  # noqa: E402
+from video_handling.streaming import CaptureHub  # noqa: E402
 
 FPS = 10
 SEC = 0.5 # Buffer in seconds
@@ -44,12 +53,22 @@ def shutdown(hub, recorder, session: CompareSession | None, server, timeout: flo
 
 
 def main():
-    load_env_file()  # keys and URLs from .env; real environment variables win
+    problems = []
+    try:
+        load_env_file()  # keys and URLs from .env; real environment variables win
+    except ProviderConfigError as e:
+        problems.append(str(e))
     configure_logging()
     logger.info("Main app initialization...")
 
-    # Check the agent settings before anything starts, so a typo or a missing key ends the app with one clear line.
-    # Paid providers are blocked on a non-loopback bind unless VLM_ALLOW_REMOTE_PAID=1.
+    # Fail fast: check every setting before anything starts. A typo, a value the app would ignore, a missing key or a
+    # bad URL ends the app with exit code 2 and one line per problem. Paid providers are blocked on a non-loopback
+    # bind unless VLM_ALLOW_REMOTE_PAID=1.
+    problems += config.problems()
+    for problem in problems:
+        logger.error(f"Invalid setting: {problem}")
+    if problems:
+        sys.exit(2)
     registry = AgentRegistry(bind_loopback=IS_LOOPBACK)
     try:
         for slot in SLOTS:

@@ -66,7 +66,12 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--max-output-tokens", type=int, default=MAX_OUTPUT_TOKENS)
     args = parser.parse_args(argv)
 
-    load_env_file()
+    try:
+        load_env_file()
+    except ProviderConfigError as e:
+        configure_logging()
+        logger.error(str(e))
+        return 2
     configure_logging()
 
     from utils.providers.agents import AgentConfigError, AgentSpec, build_provider

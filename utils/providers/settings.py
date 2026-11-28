@@ -6,6 +6,7 @@ An empty variable counts as unset. The browser can never set a key or a URL.
 import ipaddress
 import os
 import re
+from pathlib import Path
 from urllib.parse import urlsplit
 
 from utils.file_management import BASE_DIR
@@ -30,11 +31,36 @@ def env(name: str) -> str | None:
     return value or None
 
 
-def load_env_file() -> bool:
-    """Load `<repo>/.env` if it exists; real environment variables win, even empty ones."""
+def env_file_errors(path: Path) -> list[int]:
+    """Lines load_dotenv would skip: unparsable ones (it warns) and a name without `=` (silently)."""
+    from dotenv.parser import parse_stream
+
+    if not path.is_file():
+        return []
+    try:
+        with path.open(encoding="utf-8") as stream:
+            return [
+                binding.original.line for binding in parse_stream(stream)
+                if binding.error or (binding.key is not None and binding.value is None)
+            ]
+    except UnicodeDecodeError:
+        raise ProviderConfigError(f"{path.name} is not UTF-8 text") from None
+
+
+def load_env_file(path: Path = BASE_DIR / ".env") -> bool:
+    """Load `path` if it exists; real environment variables win, even empty ones.
+
+    Raises ProviderConfigError, and loads nothing, when a line cannot be parsed. The message gives line numbers only:
+    the line may hold a key.
+    """
     from dotenv import load_dotenv
 
-    return load_dotenv(BASE_DIR / ".env", override=False)
+    bad = env_file_errors(path)
+    if bad:
+        raise ProviderConfigError(
+            f"{path.name}: line {', '.join(map(str, bad))} cannot be parsed (expected NAME=value)"
+        )
+    return load_dotenv(path, override=False)
 
 
 def check_model_id(model: str) -> str:
