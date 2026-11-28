@@ -212,7 +212,13 @@ FastAPI's `/docs` and `/redoc` are available only when bound to a loopback addre
 
 ## Configuration
 
-All environment variables are optional.
+All environment variables are optional. A git-ignored `.env` file in the repository root is read at startup (and by the
+provider check below); a variable set in the real environment wins, even when it is empty. An empty variable counts as
+unset.
+
+Only these variables configure a provider. The OpenAI SDK would also read `OPENAI_ORG_ID`, `OPENAI_PROJECT_ID`,
+`OPENAI_BASE_URL`, `OPENAI_CUSTOM_HEADERS` and others by itself; the app clears them, so nothing meant for OpenAI
+reaches another server. Provider clients do not follow redirects and do not retry.
 
 | Variable | Default | Meaning |
 |---|---|---|
@@ -223,6 +229,9 @@ All environment variables are optional.
 | `VLM_AGENT_A` | `demo` | The agent that answers: `demo` (no model) or `hf` (local VideoLLaMA3, needs `VLM_ENABLE_HF=1`). Other providers fail at startup with "not available in the app yet". An empty value counts as unset. |
 | `VLM_ENABLE_HF` | unset | `1` allows `VLM_AGENT_A=hf`, which downloads the model at a pinned revision and loads it at startup on a CUDA GPU. |
 | `VLM_BACKEND` | removed | Replaced by the two variables above; if set, the app stops at startup and names them. |
+| `OPENAI_API_KEY` | unset | Key for `openai`. Sent only to `https://api.openai.com/v1`, never to another URL. |
+| `OLLAMA_BASE_URL` | `http://localhost:11434` | Ollama server for `ollama` (its OpenAI-compatible `/v1` API; models listed with `/api/tags` and `/api/show`). |
+| `VLM_COMPAT_BASE_URL`, `VLM_COMPAT_API_KEY` | unset | Any OpenAI-compatible server for `compat` (OpenRouter, vLLM and others). Without a key the placeholder `EMPTY` is sent, never the OpenAI key. |
 | `OTEL_ENABLED`, `OTEL_*` | off | See [Observability](#observability-opentelemetry). |
 
 Files: user presets go to `presets/user_presets.json`, prompt history to `prompting/history.json`.
@@ -233,8 +242,24 @@ failure, the exception class, any HTTP status and the stack, not the exception m
 that fails to load at startup, are logged with their message. The values of `OPENAI_API_KEY`,
 `ANTHROPIC_API_KEY`, `VLM_COMPAT_API_KEY`, `HF_TOKEN` and `HUGGING_FACE_HUB_TOKEN`, if set and at least 8 characters
 long, are replaced with `[redacted]` in log text. Output that bypasses Python logging, such as messages from native
-libraries or the OpenTelemetry console exporter, is not filtered. No API provider exists yet, so no key is used by the app
-itself.
+libraries or the OpenTelemetry console exporter, is not filtered. The app itself does not select an API provider yet;
+the provider check below does.
+
+### Checking a provider
+
+The API adapters exist as a library and can be tried from the command line before the app can select them:
+
+```bash
+python -m utils.providers.check openai --list                # the models the provider offers
+python -m utils.providers.check openai <model>               # one call on one 0.5 s clip of the sample video
+python -m utils.providers.check ollama <model> --fps 3       # 2 of the 5 frames, as the app would send them
+```
+
+Providers: `openai`, `ollama`, `compat` (and `demo`). One call sends up to 5 frames (at most 768 px on the long edge)
+and asks for at most 1024 output tokens; a paid provider charges for it. It prints the answer, finish reason, token
+counts, latency and the parameters actually sent, never the key. If a model rejects `temperature`, the call is
+repeated once without it, and that model is not sent one again during the run. **The adapters are unit-tested only:
+none has answered a real call yet** (they were checked against a local stub server).
 
 ## Hardware and performance
 
