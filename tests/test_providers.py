@@ -115,7 +115,8 @@ def test_hf_passes_the_prompt_from_the_request():
     }]
     assert result.text == "a person walks"
     assert result.params_sent == {"temperature": 0.4, "max_new_tokens": 64, "fps": 3, "max_frames": 20}
-    assert (result.input_tokens, result.output_tokens, result.cost_usd) == (None, None, None)
+    assert (result.input_tokens, result.output_tokens) == (None, None)
+    assert (result.cost_usd, result.cost_source) == (0.0, "local")  # shown as "no API fee"
 
 
 def test_hf_temperature_has_a_floor():

@@ -60,7 +60,13 @@ def test_static_mounts_are_absolute():
     mounts = {
         r.path: r.app.directory
         for r in web_engine.app.routes
-        if isinstance(r, Mount) and isinstance(r.app, StaticFiles) and r.path in ("/src", "/presets")
+        if isinstance(r, Mount) and isinstance(r.app, StaticFiles)
     }
-    assert set(mounts) == {"/src", "/presets"}
+    assert set(mounts) == {"/src"}
     assert all(Path(d).is_absolute() for d in mounts.values())
+
+
+def test_preset_files_not_served(client):
+    # Saved user prompts are only reachable through /preset_buttons, never as files.
+    for path in ("/presets/user_presets.json", "/presets/button_presets.json"):
+        assert client.get(path).status_code == 404

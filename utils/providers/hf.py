@@ -4,6 +4,7 @@ import time
 from typing import Any
 
 from utils.providers import GenerateRequest, ModelInfo, Result
+from utils.providers.pricing import LOCAL
 
 HF_MODEL = "DAMO-NLP-SG/VideoLLaMA3-7B"  # the only one: utils/vlm_wrapper.py loads this repo at a pinned revision
 MIN_TEMPERATURE = 0.01  # generate() with sampling rejects 0
@@ -65,7 +66,7 @@ class HFProvider:
             cached_tokens=None,
             reasoning_tokens=None,
             latency_ms=latency_ms,
-            cost_usd=None,
-            cost_source=None,
+            cost_usd=0.0,  # runs on this machine: no API fee (design: providers, Price)
+            cost_source=LOCAL,
             params_sent=params,
         )

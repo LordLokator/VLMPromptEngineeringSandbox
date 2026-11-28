@@ -300,7 +300,8 @@ function renderResult(data) {
     if (num(metrics.latency_ms)) t.latencies.push(metrics.latency_ms);
     if (num(metrics.input_tokens)) t.input += metrics.input_tokens;
     if (num(metrics.output_tokens)) t.output += metrics.output_tokens;
-    if (num(metrics.cost_usd)) t.cost += metrics.cost_usd;
+    if (metrics.cost_source === "local") t.local += 1;
+    else if (num(metrics.cost_usd)) { t.cost += metrics.cost_usd; t.priced += 1; }
     if (!ok) t.errors += 1;
     if (ok && data.remote && !num(metrics.cost_usd)) t.unpriced += 1;
     renderTotals(card);
@@ -338,8 +339,14 @@ function renderTotals(card) {
         el("div", "fw-semibold", "Session"),
         el("div", null, `${t.calls} calls, ${t.errors} errors, median latency ${formatMs(med)}`),
         el("div", null, `Tokens in ${t.input} / out ${t.output}`),
-        el("div", null, `Cost ${formatCost(t.cost, null)}${t.unpriced ? `, ${t.unpriced} unpriced` : ""}`),
+        el("div", null, `Cost ${totalCost(t)}${t.unpriced ? `, ${t.unpriced} unpriced` : ""}`),
     );
+}
+
+// A sum is shown only over calls that had a price: no priced call gives "n/a" (or "no API fee"), never $0.
+function totalCost(t) {
+    if (t.priced) return formatCost(t.cost, null);
+    return t.local && t.local === t.calls ? formatCost(null, "local") : "n/a";
 }
 
 function addHistory(card, data, text) {
@@ -390,7 +397,7 @@ function buildCard(slot) {
     $(`slot${slot}`).appendChild(node);
     const role = (name) => node.querySelector(`[data-role="${name}"]`);
     const card = { el: node, role, latest: null, pendingList: null, dirty: false,
-        totals: { calls: 0, errors: 0, latencies: [], input: 0, output: 0, cost: 0, unpriced: 0 } };
+        totals: { calls: 0, errors: 0, latencies: [], input: 0, output: 0, cost: 0, priced: 0, local: 0, unpriced: 0 } };
     role("title").textContent = `Agent ${slot}`;
     role("models").id = `models${slot}`;
     role("model").setAttribute("list", `models${slot}`);

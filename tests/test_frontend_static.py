@@ -38,6 +38,16 @@ def test_images_only_from_checked_jpeg_data_urls():
 def test_unknown_values_render_as_na_never_zero():
     cost = function_body("formatCost")
     assert '"n/a"' in cost and '"no API fee"' in cost and "$0" not in cost
+
+
+def test_session_total_cost_is_na_without_a_priced_call():
+    # The total sums priced calls only; with none it must not show the empty sum as $0.
+    totals = function_body("renderTotals")
+    assert "totalCost(t)" in totals and "formatCost(t.cost" not in totals
+    total = function_body("totalCost")
+    assert "if (t.priced) return formatCost(t.cost, null);" in total and '"n/a"' in total
+    result = function_body("renderResult")
+    assert "t.priced += 1" in result and 'metrics.cost_source === "local"' in result
     assert '"n/a"' in function_body("formatTokens") and '"n/a"' in function_body("formatMs")
 
 
