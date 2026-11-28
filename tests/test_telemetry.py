@@ -7,6 +7,7 @@ import pytest
 
 from main import make_clip_handler, process_clip
 from utils import telemetry
+from utils.providers import Result
 from video_handling.clip_handling import ClipSample
 
 PROMPT = "SECRET-PROMPT-TEXT"
@@ -17,24 +18,20 @@ def sample(path):
 
 
 class FakeVLM:
-    name = "fake/backend"
+    label = "fake/backend"
 
     def __init__(self, fail=False):
         self.fail = fail
 
-    def forward(self, video_path, fps, max_frames, temperature):
+    def generate(self, request):
         if self.fail:
             raise RuntimeError("boom")
-        return PROMPT, temperature
-
-
-class GoodVLM(FakeVLM):
-    name = "good"
+        return Result(request.prompt, "stop", "m", "m", None, None, None, None, 1.0, None, None)
 
 
 def run(vlm):
     process_clip(
-        sample("c.mp4"), vlm, lambda m: None,
+        sample("c.mp4"), vlm, lambda m: None, get_prompt=lambda: PROMPT,
         get_temperature=lambda: 0.5, get_fps=lambda: 3, get_source_epoch=lambda: 0, max_frames=20,
     )
 
@@ -100,16 +97,6 @@ def test_inference_span_and_histogram_ok(otel):
     assert "vlm.inference.errors" not in points(reader)
 
 
-def test_chain_fallback_labels_answering_backend(otel):
-    from utils.backends import ChainBackend
-
-    exporter, reader = otel
-    run(ChainBackend([FakeVLM(fail=True), GoodVLM()]))
-    (span,) = exporter.get_finished_spans()
-    assert span.attributes["vlm.backend"] == "good"
-    assert points(reader)["vlm.inference.duration"][0].attributes["vlm.backend"] == "good"
-
-
 def test_error_sets_status_and_counts(otel):
     from opentelemetry.trace import StatusCode
 
@@ -158,8 +145,8 @@ def test_no_prompt_text_in_telemetry(otel):
 def test_exception_text_stays_out_of_telemetry(otel):
     # Real decode/model errors quote the clip path (and could quote the prompt).
     class LeakyVLM(FakeVLM):
-        def forward(self, video_path, fps, max_frames, temperature):
-            raise OSError(f"cannot decode {video_path} for {PROMPT}")
+        def generate(self, request):
+            raise OSError(f"cannot decode {request.video_path} for {request.prompt}")
 
     exporter, reader = otel
     run(LeakyVLM())

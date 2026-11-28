@@ -4,9 +4,9 @@ build-backend = "setuptools.build_meta"
 
 # Single committed reference for dependencies and setup; there is no requirements or lock file.
 # Install from a checkout, inside a virtual environment:
-#   pip install .              base: web layer only; not enough to run the app
-#   pip install ".[gpu]"       the app with the real model (setup.sh does this, then adds flash-attn)
-#   pip install ".[otel]"      optional OpenTelemetry export, added to a gpu install
+#   pip install .              the whole app without a GPU: demo agent (and API providers, once they are selectable)
+#   pip install ".[gpu]"       adds the local model (setup.sh does this, then adds flash-attn)
+#   pip install ".[otel]"      optional OpenTelemetry export
 #   pip install ".[dev]"       tests and lint without a GPU
 # These install dependencies only (see [tool.setuptools]); the app runs from the checkout.
 #
@@ -20,20 +20,28 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "vlm-prompt-engineering-sandbox"
 version = "0.1.0"
-description = "Web UI for live prompt editing against a Video-LLM (VideoLLaMA3-7B) on short video clips."
+description = "Web UI for live prompt editing against video-capable models on short video clips."
 readme = "README.md"
 license = "MIT"
 requires-python = ">=3.11"
-# Base: web layer only (uvicorn[standard] brings the websockets library needed for /ws).
+# Base: everything the app needs without a GPU (uvicorn[standard] brings the websockets library needed for /ws).
+# OpenCV is the headless build for every install: it and opencv-python both provide cv2, so never install both.
+# The pinned VideoLLaMA3 remote code (processing_videollama3.py at MODEL_REVISION) uses only cv2.imread and
+# cv2.cvtColor, which the headless build has (read 2026-11-28, not run with it).
+# The SDKs are exact pins: the newest release at least 7 days old with no OSV record (checked 2026-11-28).
 dependencies = [
     "fastapi",
     "starlette>=1.7.0",   # TrustedHostMiddleware handles [::1] from 1.7.0 (release notes, 2026-11-27)
     "uvicorn[standard]",
     "loguru",
+    "opencv-python-headless",
+    "numpy",              # the gpu extra pins it (coupled set)
+    "openai==3.57.0",
+    "anthropic==2.12.0",
 ]
 
 [project.optional-dependencies]
-# gpu: full runtime for the real model. Needs a CUDA GPU.
+# gpu: adds the local model (VLM_AGENT_A=hf, VLM_ENABLE_HF=1). Needs a CUDA GPU.
 # The transformers/torch/numpy pins are a coupled set (VideoLLaMA3 remote code): change them
 # together, and say in the README if the new set has not been run on a GPU. This set has not
 # (2026-11-26); the README lists what was checked instead. The university version used
@@ -50,7 +58,6 @@ gpu = [
     "huggingface-hub",        # imported directly for snapshot_download; transformers constrains the version
     "accelerate",
     "decord",
-    "opencv-python",
     "ffmpeg-python",
     "imageio-ffmpeg",
     "imageio",
@@ -63,15 +70,12 @@ otel = [
     "opentelemetry-exporter-otlp==1.45.2",
     "opentelemetry-instrumentation-fastapi==0.66b2",
 ]
-# dev: tests and lint, GPU-free (no torch, transformers, flash-attn or decord). numpy is unpinned
-# because tests do not depend on its version.
+# dev: tests and lint, GPU-free (no torch, transformers, flash-attn or decord).
 dev = [
     "ruff",
     "pytest",
     "httpx",                  # required by Starlette's TestClient
     "pyyaml",                 # tests/test_workflows.py: workflow/dependabot structure test
-    "opencv-python-headless", # CI runners lack libGL; do not use opencv-python here
-    "numpy",
     "opentelemetry-sdk",      # tests/test_telemetry.py: in-memory span/metric exporters
 ]
 

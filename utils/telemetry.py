@@ -9,7 +9,7 @@ Prompt text, responses, clip paths and frames are never recorded.
 import os
 import time
 from contextlib import contextmanager
-from typing import Any, Callable, Iterator
+from typing import Any, Iterator
 
 from loguru import logger
 
@@ -96,14 +96,11 @@ def setup_telemetry(app: Any) -> None:
 
 
 @contextmanager
-def inference(backend: str, fps: int, max_frames: int, temperature: float) -> Iterator[Callable[[str], None]]:
-    """Span + duration histogram + error counter around one backend call. Re-raises errors.
-
-    Yields a setter for the backend label: a fallback chain only knows which backend answered afterwards.
-    """
+def inference(backend: str, fps: int, max_frames: int, temperature: float) -> Iterator[None]:
+    """Span + duration histogram + error counter around one agent call. Re-raises errors."""
     state = _state
     if state is None:
-        yield lambda name: None
+        yield
         return
     attrs = {"vlm.backend": backend, "vlm.fps": fps, "vlm.max_frames": max_frames, "vlm.temperature": temperature}
     outcome = "error"
@@ -114,14 +111,8 @@ def inference(backend: str, fps: int, max_frames: int, temperature: float) -> It
         with state.tracer.start_as_current_span(
             "vlm.inference", attributes=attrs, record_exception=False, set_status_on_exception=False
         ) as span:
-
-            def set_backend(name: str) -> None:
-                nonlocal backend
-                backend = name
-                span.set_attribute("vlm.backend", name)
-
             try:
-                yield set_backend
+                yield
             except Exception as e:
                 from opentelemetry.trace import Status, StatusCode
 

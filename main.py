@@ -1,19 +1,21 @@
 # main.py
 import signal
+import sys
 import threading
 import time
 import timeit
 from functools import partial
 from pathlib import Path
-from typing import Callable, Protocol
+from typing import Callable
 from loguru import logger
 from concurrent.futures import ThreadPoolExecutor
 
 from prompting.prompting import Prompt, RuntimeSettings
 from utils import telemetry
-from utils.backends import make_backend
 from utils.errors import log_failure
 from utils.logging_setup import configure_logging, route_stdlib_logging
+from utils.providers import SYSTEM_PROMPT, GenerateRequest, Provider
+from utils.providers.agents import AgentConfigError, agent_spec_from_env, build_agent
 from web_engine import start_server_threaded, broadcast_sync, emit
 from video_handling.clip_handling import ClipRecorder, ClipSample
 from video_handling.streaming import CaptureHub
@@ -23,49 +25,55 @@ SEC = 0.5 # Buffer in seconds
 MAX_FRAMES = 20
 
 
-class VLMLike(Protocol):
-    def forward(self, video_path: str, fps: int, max_frames: int, temperature: float) -> tuple[str, float]: ...
+def build_request(
+    clip: ClipSample, *, prompt: str, temperature: float, fps: int, max_frames: int, clip_fps: int = FPS
+) -> GenerateRequest:
+    """One round's request. Every agent gets the same one, so API agents get byte-identical frames."""
+    frames, times = clip.frames_at(fps, clip_fps)
+    return GenerateRequest(
+        frames=frames,
+        frame_times=times,
+        system=SYSTEM_PROMPT,
+        prompt=prompt,
+        temperature=temperature,
+        video_path=clip.video_path,
+        fps=fps,
+        max_frames=max_frames,
+    )
 
 
 def process_clip(
     clip: ClipSample,
-    vlm: VLMLike,
+    agent: Provider,
     broadcast: Callable[[dict], None],
     *,
+    get_prompt: Callable[[], str],
     get_temperature: Callable[[], float],
     get_fps: Callable[[], int],
     get_source_epoch: Callable[[], int],
     max_frames: int,
 ) -> None:
-    """Ask the backend about one clip. Nothing is broadcast if the source changed in the meantime."""
+    """Ask the agent about one clip. Nothing is broadcast if the source changed in the meantime."""
     try:
         start = timeit.default_timer()
 
         fps, temperature = get_fps(), get_temperature()
-        backend = getattr(vlm, "name", type(vlm).__name__)
-        with telemetry.inference(backend, fps, max_frames, temperature) as set_backend:
-            output, _temperature = vlm.forward(
-                video_path=clip.video_path,
-                fps=fps,
-                max_frames=max_frames,
-                temperature=temperature
-            )
-            # A fallback chain only knows which backend answered after forward() returns.
-            set_backend(getattr(vlm, "name", backend))
+        request = build_request(clip, prompt=get_prompt(), temperature=temperature, fps=fps, max_frames=max_frames)
+        with telemetry.inference(agent.label, fps, max_frames, temperature):
+            result = agent.generate(request)
 
         delay = timeit.default_timer() - start
 
-        _message = f"VLM Response (t: {_temperature:.2f} | Δ: {delay:.2f}s): {output}"
-        logger.info(_message)
+        logger.info(f"{agent.label} answered (t: {temperature:.2f} | Δ: {delay:.2f}s): {result.text}")
 
         # Send to frontend
         if clip.source_epoch != get_source_epoch():
             logger.info(f"Dropped the answer for clip {clip.clip_id}: it shows an earlier source ({clip.label}).")
             return
-        broadcast(emit("vlm", output, delay=delay))
+        broadcast(emit("vlm", result.text, delay=delay))
 
     except Exception as e:  # noqa: BLE001 - worker boundary: logged and reported to the UI
-        # Inference can fail in many ways (CUDA, decoding, model); the worker must survive and tell the UI.
+        # Inference can fail in many ways (CUDA, decoding, model, network); the worker must survive and tell the UI.
         message = log_failure("Failed to process clip", e)
         if clip.source_epoch == get_source_epoch():
             broadcast(emit("error", f"Failed to process: {message}"))
@@ -128,7 +136,7 @@ def shutdown(
 ) -> None:
     """Stop capturing first, let the in-flight inference finish (bounded), then stop the web server.
 
-    `executor` is None when a stop signal arrived before the backend finished loading.
+    `executor` is None when a stop signal arrived before the agent finished loading.
     """
     logger.info("Shutting down...")
     recorder.stop()
@@ -146,7 +154,14 @@ def main():
     configure_logging()
     logger.info("Main app initialization...")
 
-    # Install handlers before the slow startup (model load) so Ctrl+C always reaches a clean shutdown.
+    # Check the agent settings before anything starts, so a typo ends the app with one clear line.
+    try:
+        agent_spec = agent_spec_from_env("A")
+    except AgentConfigError as e:
+        logger.error(str(e))
+        sys.exit(2)
+
+    # Install handlers before the slow startup (an hf model load) so Ctrl+C always reaches a clean shutdown.
     # The handler only sets the event; startup checks it between stages.
     stop_event = threading.Event()
 
@@ -168,7 +183,7 @@ def main():
     # Start server in separate thread
     server = start_server_threaded(prompt, settings, hub)
 
-    # Cuts clips once a backend is there to take them (not started yet)
+    # Cuts clips once an agent is there to take them (not started yet)
     recorder = ClipRecorder(
         hub,
         buffer_seconds=SEC,
@@ -178,18 +193,20 @@ def main():
     executor: ThreadPoolExecutor | None = None
     busy = threading.Lock()
     try:
-        hub.start()  # the video plays without, and before, any backend
+        hub.start()  # the video plays without, and before, any agent
 
-        # Instantiate the backend (VLM_BACKEND, default: local HF model)
-        vlm = make_backend(prompt)
+        # Agent A (VLM_AGENT_A, default: demo). An hf agent loads the model here, synchronously.
+        agent = build_agent(agent_spec)
+        logger.info(f"Agent A: {agent.label}")
         route_stdlib_logging()  # libraries imported while loading may have added their own handlers
 
         if not stop_event.is_set():
             executor = ThreadPoolExecutor(max_workers=1)
             process = partial(
                 process_clip,
-                vlm=vlm,
+                agent=agent,
                 broadcast=broadcast_sync,
+                get_prompt=prompt.get,
                 get_temperature=settings.get_temperature,
                 get_fps=settings.get_resample_fps,
                 get_source_epoch=lambda: hub.spec.source_epoch,

@@ -7,7 +7,6 @@ from typing import Any
 
 from loguru import logger
 
-from prompting.prompting import Prompt
 from utils.errors import DecodeError
 
 MAX_NEW_TOKENS = 1024
@@ -75,14 +74,12 @@ def _clip_seconds(video_path: str) -> float:
 class VLM:
     name = "hf/VideoLLaMA3-7B"
 
-    def __init__(self, prompt: Prompt):
+    def __init__(self):
         import torch  # pyright: ignore[reportMissingImports]  # GPU extra, not installed in dev
         from transformers import AutoModelForCausalLM, AutoProcessor  # pyright: ignore[reportMissingImports]
 
         _patch_remote_code_compat()
         model_dir = _pinned_snapshot()
-        self.sys_prompt = "You are a helpful assistant."
-        self.prompt_obj = prompt
 
         logger.info(f"Attention implementation: {ATTN_IMPL}")
         self.model: Any = AutoModelForCausalLM.from_pretrained(
@@ -99,19 +96,22 @@ class VLM:
         )
         logger.info("Instantiated models.")
 
-    def forward(self, video_path, fps, max_frames, temperature=0.01) -> tuple[str, float]:
-        current_prompt = self.prompt_obj.get()
+    def forward(
+        self,
+        video_path: str,
+        fps: int,
+        max_frames: int,
+        prompt: str,
+        system: str,
+        temperature: float = 0.01,
+        max_new_tokens: int = MAX_NEW_TOKENS,
+    ) -> str:
+        """Answer `prompt` about the clip. The caller passes the prompt: one round, one snapshot."""
+        conversation = self.get_conv(video_path=video_path, fps=fps, max_frames=max_frames, prompt=prompt,
+                                     system=system)
+        return self._forward(conversation, temperature, max_new_tokens)
 
-        conversation = self.get_conv(
-            video_path=video_path,
-            fps=fps,
-            max_frames=max_frames,
-            prompt=current_prompt
-        )
-        output = self._forward(conversation, temperature)
-        return (output, temperature)
-
-    def _forward(self, conversation, temperature=0.01) -> str:
+    def _forward(self, conversation, temperature=0.01, max_new_tokens: int = MAX_NEW_TOKENS) -> str:
         import torch  # pyright: ignore[reportMissingImports]  # GPU extra, not installed in dev
 
         processed_inputs = self.processor(
@@ -130,7 +130,7 @@ class VLM:
         # VLM generate
         output_ids = self.model.generate(
             **inputs,
-            max_new_tokens=MAX_NEW_TOKENS,
+            max_new_tokens=max_new_tokens,
             temperature=temperature,
         )
         decoded: list[str] = self.processor.batch_decode(
@@ -142,11 +142,11 @@ class VLM:
             return ""
         return decoded[0].strip()
 
-    def get_conv(self, video_path, fps, max_frames, prompt):
+    def get_conv(self, video_path, fps, max_frames, prompt, system):
         return [
             {
                 "role": "system",
-                "content": self.sys_prompt
+                "content": system
             },
             {
                 "role": "user",

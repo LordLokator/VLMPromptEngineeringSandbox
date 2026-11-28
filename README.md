@@ -17,7 +17,8 @@
   checks](#ml-stack-what-was-checked), which do not show that the real model works.
 - **What it is:** a small proof of concept for one user on localhost. It is not a production service.
 - **Where it is heading:** two models of your choice answering the same video side by side, with latency, token and cost
-  figures, usable without a GPU. **Planned, not implemented yet.** See [Roadmap](#roadmap-compare-two-models).
+  figures, usable without a GPU. **Mostly planned:** so far the app runs without a GPU with a demo agent. See
+  [Roadmap](#roadmap-compare-two-models).
 
 <img width="100%" alt="Web UI: video stream, preset buttons and prompt controls on the left, chat panel on the right" src="https://github.com/user-attachments/assets/e5600752-73b2-404c-997b-cb4f48cd624d" />
 
@@ -39,9 +40,29 @@
 - **Prompt history:** each prompt change is logged with a timestamp.
 - **Failure behaviour:** inference errors appear in the chat, the browser reconnects with backoff (1 s to 10 s), and clips
   skipped while the model is busy are reported (at most one notice per 5 s).
+- **Demo agent:** with no model configured, a demo agent answers with facts measured on the frames it received (count,
+  size, brightness, change between frames). It is not a model; it lets the app run anywhere.
 - **Optional OpenTelemetry** traces and metrics, off by default.
 
 ## Quick start
+
+### Without a GPU (demo agent)
+
+Needs Python 3.11 or 3.12 and `git`; no GPU, no torch, no API key.
+
+```bash
+git clone https://github.com/LordLokator/VLMPromptEngineeringSandbox VLMDemo
+cd VLMDemo
+python -m venv .venv
+source .venv/bin/activate     # Windows: .venv\Scripts\activate
+pip install .
+python main.py
+```
+
+Open <http://localhost:8000/>. The sample video plays and the demo agent answers each clip with facts measured on its
+frames. It runs no model, so its answers ignore the prompt.
+
+### With the local model (CUDA GPU)
 
 Requirements (the tested OS is Ubuntu, with the university version):
 
@@ -56,8 +77,10 @@ git clone https://github.com/LordLokator/VLMPromptEngineeringSandbox VLMDemo
 cd VLMDemo
 bash setup.sh                 # creates .venv, installs the "gpu" extra and flash-attn
 source .venv/bin/activate
-python main.py
+VLM_AGENT_A=hf VLM_ENABLE_HF=1 python main.py
 ```
+
+Without `VLM_AGENT_A=hf` and `VLM_ENABLE_HF=1` the app starts with the demo agent instead of the model.
 
 **The flash-attn step has not been built for this repository.** `setup.sh` installs it from a pinned upstream commit,
 because the latest PyPI release (2.8.3.post2, checked 2026-11-26) compiles as C++17 while torch 2.13 headers use C++20
@@ -70,7 +93,10 @@ Open <http://localhost:8000/>. The model repository is downloaded from Hugging F
 that local snapshot; no VideoLLaMA3 clone is needed. Inference starts once the model has loaded, with a placeholder
 prompt until you send your own.
 
-No GPU? You cannot run the app, but you can run the [tests](#development).
+Every install uses the headless OpenCV build (`opencv-python-headless`); the `gpu` extra no longer adds
+`opencv-python`. The model's remote code at the pinned revision calls only `cv2.imread` and `cv2.cvtColor`, which the
+headless build has. That was checked by reading the code; **the headless build has not been imported together with
+the remote code.**
 
 ## Architecture
 
@@ -84,8 +110,8 @@ flowchart LR
         REC["ClipRecorder<br/>0.5 s clips at 10 FPS, temp .mp4"]
         GATE{"Model busy?"}
         EXEC["Inference worker<br/>single thread"]
-        BACK["Backend seam<br/>utils/backends.py"]
-        VLM["VideoLLaMA3-7B<br/>utils/vlm_wrapper.py"]
+        BACK["Agent A<br/>utils/providers/"]
+        VLM["demo (no model), or<br/>VideoLLaMA3-7B via utils/vlm_wrapper.py"]
         STATE["Prompt and RuntimeSettings<br/>thread-safe"]
         WEB["FastAPI + uvicorn thread"]
     end
@@ -118,7 +144,12 @@ Design choices:
   display these times yet.
 - **One inference at a time, no queue.** Clips that arrive while the model is busy are dropped, so answers do not fall
   further and further behind the video.
-- **A backend is one method:** `forward(video_path, fps, max_frames, temperature) -> (text, temperature)`.
+- **Every agent has one contract** (`utils/providers/`): `generate(request) -> Result`. The request carries the clip's
+  frames as JPEG with their times, the prompt and the settings of that round, and the clip file for the local model.
+  The frames are the ones the local model's loader picks at the resample FPS, scaled to at most 768 px on the long edge
+  at JPEG quality 80, and the same bytes go to every agent. The
+  result carries the text, latency, tokens and cost where the provider reports them (`None` otherwise), and the
+  parameters actually sent. Agent A is chosen at startup with `VLM_AGENT_A`.
 - **All GPU code sits in `utils/vlm_wrapper.py`**, with lazy imports, so everything else is testable without torch.
 - **Clips are temporary:** deleted after inference, or immediately if dropped.
 - **Worker threads never touch sockets directly;** they hand messages to the server's event loop.
@@ -189,13 +220,15 @@ All environment variables are optional.
 | `VLM_ALLOWED_HOSTS` | empty | Comma-separated host names or IP addresses, without ports, that browsers use to reach the app, for example `192.168.1.20,mybox.local`. Added to `localhost`, `127.0.0.1` and `[::1]`, which are always allowed. `*.example.com` matches subdomains; a bare `*` is refused. Required when `VLM_HOST` is not loopback. It guards against DNS rebinding and is not authentication. |
 | `VLM_PORT` | `8000` | Port. |
 | `VLM_ATTN_IMPL` | `flash_attention_2` | Attention implementation passed to the model. No value has run on a GPU with the current pins; `sdpa` and `eager` ran only in the [CPU checks](#ml-stack-what-was-checked). |
-| `VLM_BACKEND` | `hf` | Inference backend. Only `hf` (local VideoLLaMA3) exists; any other value fails at startup. |
+| `VLM_AGENT_A` | `demo` | The agent that answers: `demo` (no model) or `hf` (local VideoLLaMA3, needs `VLM_ENABLE_HF=1`). Other providers fail at startup with "not available in the app yet". An empty value counts as unset. |
+| `VLM_ENABLE_HF` | unset | `1` allows `VLM_AGENT_A=hf`, which downloads the model at a pinned revision and loads it at startup on a CUDA GPU. |
+| `VLM_BACKEND` | removed | Replaced by the two variables above; if set, the app stops at startup and names them. |
 | `OTEL_ENABLED`, `OTEL_*` | off | See [Observability](#observability-opentelemetry). |
 
 Files: user presets go to `presets/user_presets.json`, prompt history to `prompting/history.json`.
 
 **Logs and errors:** logs go to stderr. Python's standard `logging` (uvicorn included), warnings and uncaught errors take
-the same path. Tracebacks do not print local variable values. For backend and capture failures the log keeps the kind of
+the same path. Tracebacks do not print local variable values. For agent and capture failures the log keeps the kind of
 failure, the exception class, any HTTP status and the stack, not the exception message. Other errors, such as a model
 that fails to load at startup, are logged with their message. The values of `OPENAI_API_KEY`,
 `ANTHROPIC_API_KEY`, `VLM_COMPAT_API_KEY`, `HF_TOKEN` and `HUGGING_FACE_HUB_TOKEN`, if set and at least 8 characters
@@ -289,9 +322,9 @@ OTEL_ENABLED=1 OTEL_TRACES_EXPORTER=otlp OTEL_METRICS_EXPORTER=otlp \
 
 | Signal | Name | Notes |
 |---|---|---|
-| Span | `vlm.inference` | One per processed clip: backend, FPS, max frames, temperature; on failure, error status and exception type (no message or stack trace). |
-| Histogram | `vlm.inference.duration` | Seconds, by backend and outcome. |
-| Counter | `vlm.inference.errors` | By backend. |
+| Span | `vlm.inference` | One per processed clip: agent (`provider:model`), FPS, max frames, temperature; on failure, error status and exception type (no message or stack trace). |
+| Histogram | `vlm.inference.duration` | Seconds, by agent and outcome. |
+| Counter | `vlm.inference.errors` | By agent. |
 | Counter | `vlm.clips.dropped` | Clips skipped while inference was busy. |
 | Counter | `ws.messages` | Parsed client messages, by role. |
 | Up/down counter | `ws.connections` | Active WebSocket connections. |
@@ -304,11 +337,12 @@ once against `grafana/otel-lgtm:0.41.1` on 2026-11-26 with a mocked backend, ove
 ## Roadmap: compare two models
 
 The goal for the first release: pick two models, play a video, and compare what they say about the same moment, and what
-it costs. **Nothing in this table is implemented yet.** Today the app runs one local model, selected at startup.
+it costs. **Only the first row has started:** the app runs one agent, chosen at startup: the demo agent (no model, the
+default) or the local model.
 
 | Planned | What it means |
 |---|---|
-| Run without a GPU | A base install that starts with built-in demo agents (no model); the local VideoLLaMA3 becomes optional. |
+| Run without a GPU | A base install that starts with built-in demo agents (no model); the local VideoLLaMA3 becomes optional. **Done for one agent:** `pip install .` runs the app with the demo agent. |
 | Your own models | OpenAI, Anthropic, Ollama or any OpenAI-compatible URL. Keys and URLs come from environment variables. |
 | Model selection | Choose each agent's provider and model in the UI while the app runs. |
 | Side-by-side view | Video in the middle, one agent on each side. Both get the same sampled frames, and the page shows them. |
@@ -323,7 +357,7 @@ Design choices behind the plan:
 - **Frames, not video files,** go to remote models: it is the input form these APIs have in common.
 - **Remote models are opt-in.** Using one sends frames of your video to that provider and may cost money.
 
-Already in place to build on: a one-method backend interface (`VLM_BACKEND`, only `hf` selectable) and optional
+Already in place to build on: the agent contract with the demo and local agents (`utils/providers/`) and optional
 OpenTelemetry (see [Observability](#observability-opentelemetry)).
 
 ## Tools
@@ -349,8 +383,9 @@ ruff check .
 pytest -q
 ```
 
-CI runs lint and a compile check, tests on Python 3.11 and 3.12, and a dependency-resolution check of the `gpu` extra on
-both versions.
+CI runs lint and a compile check, tests on Python 3.11 and 3.12, a plain `pip install .` in a new venv that imports the
+app with torch blocked, and a dependency-resolution check of the `gpu` and `dev` extras on both versions (each must
+resolve to exactly one OpenCV distribution).
 
 All dependencies are declared in [`pyproject.toml`](pyproject.toml), whose comments describe each group and how to install
 it; no requirements or lock file is committed. The security workflow's osv-scanner job resolves the `gpu` extra (and the
@@ -359,7 +394,7 @@ Unpinned and transitive versions are whatever resolves on that run; they are not
 
 ```
 main.py, web_engine.py   wiring and shutdown; HTTP and /ws
-utils/                   backend selection, VLM wrapper, telemetry, presets, file helpers
+utils/                   agents (providers/), VLM wrapper, telemetry, presets, file helpers
 video_handling/          capture, clip recording, streaming
 prompting/               prompt state, runtime settings, history
 src/                     frontend

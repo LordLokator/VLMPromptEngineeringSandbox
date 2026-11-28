@@ -624,8 +624,25 @@ def test_recorder_survives_a_failed_write(monkeypatch, tmp_path):
     assert len(calls) == 2
 
 
+def test_clips_carry_jpeg_frames_and_their_times(monkeypatch, tmp_path):
+    flushed: list = []
+    done = threading.Event()
+    recorder = _recorder(monkeypatch, tmp_path)
+    recorder.start(lambda clip: flushed.append(clip) or done.set())
+    segment = Segment(recorder.hub.spec, 0, None, 100.0)  # a webcam-like segment: times are base + offset
+    recorder._sampler.feed(segment, 0.0, BLACK)
+    recorder._sampler.advance(segment, 0.5)
+    assert done.wait(5)
+    recorder.stop()
+    (clip,) = flushed
+    assert len(clip.frames) == 5 and all(f.startswith(b"\xff\xd8") for f in clip.frames)  # JPEG start marker
+    assert clip.frame_times == pytest.approx((100.0, 100.1, 100.2, 100.3, 100.4))
+    assert clip.frame_times[0] == pytest.approx(clip.start_s)
+
+
 def test_clips_carry_their_identity_and_times_rise_within_a_loop(monkeypatch, tmp_path):
     monkeypatch.setattr(clip_handling, "write_video", lambda frames, path, fps=60: None)
+    monkeypatch.setattr(clip_handling, "encode_jpeg", lambda frame: repr(frame).encode())  # frames are tuples here
     monkeypatch.setattr(clip_handling, "MAX_PENDING_CLIPS", 1000)  # the fake clock outruns any writer
     hub, _clock, _caps = fake_hub(lambda _spec: ScriptCap([i * 100 for i in range(17)], 10.0))  # 1.7 s
     recorder = ClipRecorder(hub, buffer_seconds=0.5, fps=10)

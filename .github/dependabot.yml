@@ -8,6 +8,7 @@ updates:
     cooldown:
       default-days: 7
     groups:
+      # Includes the exact openai and anthropic pins: their updates come through here, after the cooldown.
       python-minor-patch:
         update-types: [minor, patch]
       # SDK, exporter and instrumentation are one matched release train (otel extra in pyproject.toml).

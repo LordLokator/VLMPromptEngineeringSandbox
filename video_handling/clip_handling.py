@@ -10,9 +10,9 @@ from loguru import logger
 
 from utils.errors import log_failure
 from utils.file_management import BASE_DIR, delete_files, full_path
-from video_handling.sampling import GridSampler, Segment
+from video_handling.sampling import GridSampler, Segment, loader_indices
 from video_handling.streaming import CaptureHub
-from video_handling.write_video import write_video
+from video_handling.write_video import encode_jpeg, write_video
 
 MAX_PENDING_CLIPS = 2
 
@@ -29,6 +29,13 @@ class ClipSample:
     end_s: float
     loop: int | None  # pass through the file, from 0; None for the webcam
     video_path: str
+    frames: tuple[bytes, ...] = ()  # every frame of the clip as JPEG (long edge <= 768, quality 80), in time order
+    frame_times: tuple[float, ...] = ()  # when each frame is shown, same clock as start_s
+
+    def frames_at(self, fps: int, clip_fps: int) -> tuple[tuple[bytes, ...], tuple[float, ...]]:
+        """The frames (and their times) an agent gets at resample `fps`: the same bytes for every agent."""
+        picked = loader_indices(len(self.frames), clip_fps, fps)
+        return tuple(self.frames[i] for i in picked), tuple(self.frame_times[i] for i in picked)
 
 
 class ClipRecorder:
@@ -44,7 +51,9 @@ class ClipRecorder:
         self._thread: threading.Thread | None = None
         self.flush_callback: Callable[[ClipSample], None] = lambda clip: logger.debug(f"Clip flushed: {clip}")
         self._sampler = GridSampler(fps, round(buffer_seconds * fps), self._enqueue)
-        self._pending: queue.Queue[tuple[Segment, float, list[Any]]] = queue.Queue(maxsize=MAX_PENDING_CLIPS)
+        self._pending: queue.Queue[tuple[Segment, float, list[Any], list[float]]] = queue.Queue(
+            maxsize=MAX_PENDING_CLIPS
+        )
 
         # Create '<repo>/tmp' if it doesn't exists:
         os.makedirs(self.out_dir, exist_ok=True)
@@ -55,7 +64,7 @@ class ClipRecorder:
         """Runs on the capture thread: never blocks. If writing falls behind, the oldest waiting clip goes."""
         while True:
             try:
-                self._pending.put_nowait((segment, start_t, frames))
+                self._pending.put_nowait((segment, start_t, frames, times))
                 return
             except queue.Full:
                 try:
@@ -69,7 +78,7 @@ class ClipRecorder:
         try:
             while self.running:
                 try:
-                    segment, start_t, frames = self._pending.get(timeout=0.1)
+                    segment, start_t, frames, times = self._pending.get(timeout=0.1)
                 except queue.Empty:
                     continue
                 if not self.running:
@@ -81,6 +90,7 @@ class ClipRecorder:
 
                 try:
                     write_video(frames, filename, fps=self.fps)
+                    jpegs = tuple(encode_jpeg(frame) for frame in frames)  # here, not on the capture thread
                     full_pathname = full_path(filename)
                     logger.debug(f"Calling flush_callback with: {full_pathname}")
                     start_s = segment.base_s + start_t
@@ -93,6 +103,8 @@ class ClipRecorder:
                         end_s=start_s + len(frames) / self.fps,
                         loop=segment.loop,
                         video_path=full_pathname,
+                        frames=jpegs,
+                        frame_times=tuple(segment.base_s + t for t in times),
                     ))
 
                 except Exception as e:  # noqa: BLE001 - worker boundary: logged, the recorder keeps running
