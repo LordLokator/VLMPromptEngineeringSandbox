@@ -4,7 +4,6 @@ import subprocess
 import sys
 
 import pytest
-from fastapi.testclient import TestClient
 from starlette.middleware.trustedhost import TrustedHostMiddleware
 from starlette.websockets import WebSocketDisconnect
 
@@ -17,16 +16,14 @@ LOOPBACK = ["localhost", "localhost:8000", "LOCALHOST:8000", "127.0.0.1", "127.0
 
 
 @pytest.fixture
-def client(monkeypatch):
-    monkeypatch.setattr(web_engine.app.state, "prompt", None, raising=False)
-    monkeypatch.setattr(web_engine.app.state, "settings", None, raising=False)
-    web_engine.active_connections.clear()
-    return TestClient(web_engine.app)
+def client(compare_app):
+    return compare_app.client
 
 
 def ws_round_trip(client, headers):
     with client.websocket_connect("/ws", headers=headers) as ws:
-        ws.send_text(json.dumps({"role": "other"}))
+        assert ws.receive_json()["type"] == "state"
+        ws.send_text(json.dumps({"type": "other"}))
         assert ws.receive_json()["type"] == "error"
 
 

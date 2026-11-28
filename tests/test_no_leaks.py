@@ -8,11 +8,9 @@ import warnings
 
 import numpy as np
 import pytest
-from fastapi.testclient import TestClient
 from loguru import logger
 
 import web_engine
-from main import process_clip
 from utils import logging_setup
 from utils.logging_setup import REDACTED, configure_logging, redact
 from video_handling import clip_handling, source, streaming
@@ -61,7 +59,10 @@ def assert_clean(text):
 
 
 class LeakyBackend:
-    label = "leaky"
+    provider, model, label = "demo", "leaky", "demo:leaky"
+
+    def list_models(self):
+        return []
 
     def generate(self, request):
         fail()
@@ -160,29 +161,24 @@ def test_uvicorn_config_adds_no_handlers_of_its_own(sink):
         assert logging.getLogger(name).propagate
 
 
-def test_backend_failure_reaches_neither_log_nor_websocket(sink, monkeypatch, tmp_path):
-    monkeypatch.setattr(web_engine.app.state, "prompt", None, raising=False)
-    monkeypatch.setattr(web_engine.app.state, "settings", None, raising=False)
-    web_engine.active_connections.clear()
-    with TestClient(web_engine.app) as client:
-        with client.websocket_connect("/ws") as ws:
-            ws.send_text('{"role": "x"}')
-            ws.receive_json()  # the connection is registered
-            process_clip(
-                ClipSample(0, "sample:1", 0, "Sample 1", 0.0, 0.5, 0, str(tmp_path / "c.mp4")),
-                LeakyBackend(),
-                web_engine.broadcast_sync,
-                get_prompt=lambda: "p",
-                get_temperature=lambda: 0.1,
-                get_fps=lambda: 10,
-                get_source_epoch=lambda: 0,
-                max_frames=20,
-            )
-            frame = ws.receive_text()
+def test_backend_failure_reaches_neither_log_nor_websocket(sink, compare_app, tmp_path):
+    compare_app.registry._build = lambda _spec: LeakyBackend()  # the next agent built is the leaky one
+    compare_app.registry.set_agent("A", "demo", "frame-facts")
+    compare_app.registry.set_agent("B", "demo", "frame-facts", enabled=False)
+    clip = ClipSample(0, "sample:1", 0, "Sample 1", 0.0, 0.5, 0, str(tmp_path / "c.mp4"), (b"x",) * 5, (0.0,) * 5)
+    frames = []
+    with compare_app.client.websocket_connect("/ws") as ws:
+        ws.receive_text()  # state: the connection is registered
+        ws.send_text('{"type": "control", "action": "step"}')
+        ws.receive_text()
+        compare_app.session.on_clip(clip)
+        while not frames or '"round_end"' not in frames[-1]:
+            frames.append(ws.receive_text())
+    frame = next(f for f in frames if '"result"' in f)
     assert "Internal error (RuntimeError)" in frame
-    assert_clean(frame)
+    assert_clean(" ".join(frames))
     out = sink.getvalue()
-    assert "Failed to process clip" in out
+    assert "Agent A (demo:leaky) failed" in out
     assert "in fail" in out  # stack frames stay, for debugging
     assert f"request failed for key {REDACTED}" not in out  # the rendered exception text is not logged
     assert_clean(out)

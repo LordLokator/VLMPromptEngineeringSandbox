@@ -24,22 +24,16 @@ def test_broadcast_prunes_dead_socket():
     web_engine.active_connections.clear()
 
 
-def test_broadcast_sync_from_thread_reaches_clients(monkeypatch):
-    from fastapi.testclient import TestClient
-
-    monkeypatch.setattr(web_engine.app.state, "prompt", None, raising=False)
-    monkeypatch.setattr(web_engine.app.state, "settings", None, raising=False)
-    web_engine.active_connections.clear()
-    with TestClient(web_engine.app) as client:
-        with client.websocket_connect("/ws") as a, client.websocket_connect("/ws") as b:
-            t = threading.Thread(target=web_engine.broadcast_sync, args=({"type": "vlm", "text": "x"},))
-            t.start()
-            t.join(5)
-            assert a.receive_json()["text"] == "x"
-            assert b.receive_json()["text"] == "x"
-    web_engine.active_connections.clear()
+def test_broadcast_sync_from_thread_reaches_clients(compare_app):
+    with compare_app.client.websocket_connect("/ws") as a, compare_app.client.websocket_connect("/ws") as b:
+        assert a.receive_json()["type"] == b.receive_json()["type"] == "state"
+        t = threading.Thread(target=web_engine.broadcast_sync, args=({"type": "system", "text": "x"},))
+        t.start()
+        t.join(5)
+        assert a.receive_json()["text"] == "x"
+        assert b.receive_json()["text"] == "x"
 
 
 def test_broadcast_sync_without_loop_is_noop(monkeypatch):
     monkeypatch.setattr(web_engine.app.state, "loop", None, raising=False)
-    web_engine.broadcast_sync({"type": "vlm", "text": "x"})
+    web_engine.broadcast_sync({"type": "system", "text": "x"})

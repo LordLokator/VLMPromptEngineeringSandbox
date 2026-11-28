@@ -3,65 +3,126 @@
 
 <head>
     <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>Video Prompt Sandbox</title>
     <link href="/src/vendor/bootstrap.min.css" rel="stylesheet" />
     <link rel="stylesheet" href="/src/style.css">
 </head>
 
 <body>
-    <div class="container-fluid">
-        <div class="row h-100">
-            <!-- LEFT PANEL -->
-            <div class="col-md-8 d-flex flex-column gap-3">
-                <div>
-                    <img id="video" src="/video_feed" />
+    <div class="container-fluid py-3">
+        <div class="row g-3">
+            <!-- Agent A (left on wide screens, after the centre on narrow ones) -->
+            <div class="col-12 col-lg-3 order-2 order-lg-1" id="slotA"></div>
+
+            <!-- Centre: controls, video, the frames the models saw, prompt -->
+            <div class="col-12 col-lg-6 order-1 order-lg-2 d-flex flex-column gap-2">
+                <header>
+                    <h1 class="h4 mb-0">Video Prompt Sandbox</h1>
+                    <p class="text-secondary small mb-0">Two models answer the same half-second moment of the video.
+                        Same frames sent to both; latency, tokens and estimated cost side by side.</p>
+                </header>
+
+                <div class="d-flex flex-wrap align-items-center gap-2" id="controls">
+                    <button id="runBtn" class="btn btn-success btn-sm">Run</button>
+                    <button id="pauseBtn" class="btn btn-outline-secondary btn-sm">Pause</button>
+                    <button id="stepBtn" class="btn btn-outline-primary btn-sm">Step</button>
+                    <span id="runState" class="small fw-semibold"></span>
+                    <div class="form-check form-switch ms-auto mb-0">
+                        <input class="form-check-input" type="checkbox" role="switch" id="metricsSwitch" checked>
+                        <label class="form-check-label small" for="metricsSwitch">Metrics</label>
+                    </div>
+                </div>
+                <div class="d-flex flex-wrap align-items-center gap-2 small metrics" id="budgetRow">
+                    <span id="budget"></span>
+                    <button id="resetBudgetBtn" class="btn btn-link btn-sm p-0">Reset budget</button>
                 </div>
 
-                <!-- Preset Buttons -->
-                <div id="presetBar" class="d-flex flex-wrap gap-2 mb-2"></div>
+                <img id="video" src="/video_feed" alt="Live preview of the selected video source" />
 
-                <!-- Input Panel -->
-                <div id="inputPanel" class="d-flex flex-column gap-2">
-                    <div>
-                        <label for="tempSlider" class="form-label">Temperature: <span id="tempVal">0.01</span></label>
+                <section aria-labelledby="stripTitle">
+                    <div class="d-flex justify-content-between small">
+                        <span id="stripTitle" class="fw-semibold">Frames the models saw</span>
+                        <span id="stripInfo" class="text-secondary">No round yet</span>
+                    </div>
+                    <div id="strip" class="d-flex gap-1 mt-1"></div>
+                    <p class="text-secondary small mb-0">One round is one 0.5 s moment. The next round starts when both
+                        agents are done, so the slower agent sets the pace.</p>
+                </section>
+
+                <div class="d-flex flex-wrap align-items-center gap-2">
+                    <label for="sourceSelect" class="small fw-semibold">Source</label>
+                    <select id="sourceSelect" class="form-select form-select-sm w-auto"></select>
+                    <span id="sourceError" class="small text-danger"></span>
+                </div>
+
+                <div id="presetBar" class="d-flex flex-wrap gap-2"></div>
+
+                <textarea id="msgInput" class="form-control" rows="3" maxlength="2000"
+                    placeholder="Prompt for both agents..."></textarea>
+                <div class="row g-2">
+                    <div class="col-sm-6">
+                        <label for="tempSlider" class="form-label small mb-0">Temperature: <span
+                                id="tempVal">0.01</span></label>
                         <input type="range" class="form-range" min="0.01" max="1" step="0.01" id="tempSlider"
                             value="0.01" />
                     </div>
-
-                    <div>
-                        <label for="fpsSlider" class="form-label"
-                            title="More frames means more VRAM and slower prefill; output length still dominates latency">Resample
-                            FPS: <span id="fpsVal">10</span></label>
-                        <input type="range" class="form-range" min="1" max="10" step="1" id="fpsSlider" value="10"
-                            title="More frames means more VRAM and slower prefill; output length still dominates latency" />
-                    </div>
-
-                    <textarea id="msgInput" class="form-control" rows="3" placeholder="Enter your prompt..."></textarea>
-
-                    <div class="d-flex flex-wrap gap-2">
-                        <button id="savePresetBtn" class="btn btn-outline-success" disabled>
-                            Save as Preset
-                        </button>
-                        <button id="toggleStream" class="btn btn-outline-secondary" onclick="toggleStream()">
-                            Toggle Stream
-                        </button>
-                        <button class="btn btn-primary" onclick="sendMessage()">
-                            Send
-                        </button>
+                    <div class="col-sm-6">
+                        <label for="fpsSlider" class="form-label small mb-0"
+                            title="Frames per second picked from the 10 FPS clip">Resample FPS: <span
+                                id="fpsVal">10</span> <span id="fpsEffective" class="text-secondary"></span></label>
+                        <input type="range" class="form-range" min="1" max="10" step="1" id="fpsSlider" value="10" />
                     </div>
                 </div>
+                <div class="d-flex flex-wrap gap-2">
+                    <button id="sendBtn" class="btn btn-primary btn-sm">Apply prompt and settings</button>
+                    <button id="savePresetBtn" class="btn btn-outline-success btn-sm" disabled>Save as preset</button>
+                </div>
+                <div id="log" class="small" aria-live="polite"></div>
             </div>
 
-            <!-- RIGHT PANEL -->
-            <div class="col-md-4 chat-wrapper">
-                <div id="chat" class="scrollable-chat shadow-sm mb-2"></div>
-                <button id="clearChatBtn" class="btn btn-sm btn-outline-danger">Clear Chat</button>
-            </div>
-
+            <!-- Agent B -->
+            <div class="col-12 col-lg-3 order-3" id="slotB"></div>
         </div>
     </div>
+
+    <template id="cardTemplate">
+        <div class="card agent-card shadow-sm">
+            <div class="card-body d-flex flex-column gap-2">
+                <div class="d-flex align-items-center gap-2">
+                    <h2 class="h6 mb-0" data-role="title"></h2>
+                    <span class="badge text-bg-secondary" data-role="badge"></span>
+                </div>
+                <div class="small text-secondary" data-role="privacy"></div>
+                <div class="d-flex gap-1">
+                    <select class="form-select form-select-sm" data-role="provider" aria-label="Provider"></select>
+                    <input class="form-control form-control-sm" data-role="model" aria-label="Model"
+                        placeholder="model" maxlength="200" />
+                </div>
+                <datalist data-role="models"></datalist>
+                <div class="d-flex align-items-center gap-2 small">
+                    <div class="form-check mb-0">
+                        <input class="form-check-input" type="checkbox" data-role="enabled" checked>
+                        <label class="form-check-label" data-role="enabledLabel">on</label>
+                    </div>
+                    <button class="btn btn-outline-secondary btn-sm" data-role="listBtn">List models</button>
+                    <button class="btn btn-primary btn-sm" data-role="applyBtn">Use</button>
+                </div>
+                <div class="small text-secondary" data-role="listInfo"></div>
+                <div class="small fw-semibold" data-role="status">Waiting for the first round</div>
+                <div class="answer" data-role="answer"></div>
+                <div class="small text-secondary" data-role="moment"></div>
+                <div class="metrics small" data-role="roundMetrics"></div>
+                <div class="metrics small border-top pt-2" data-role="totals"></div>
+                <details class="small">
+                    <summary>History</summary>
+                    <ol class="history mb-0" data-role="history" reversed></ol>
+                </details>
+            </div>
+        </div>
+    </template>
+
     <script src="/src/script.js"></script>
 </body>
-
 
 </html>

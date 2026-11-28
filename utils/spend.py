@@ -156,6 +156,16 @@ class SpendController:
                 self._pause("step")
             return Admission(True)
 
+    def record_late(self, remote: bool, cost_usd: float | None) -> None:
+        """An answer that came after its round reported a timeout. The call and the failure were already counted;
+        only its cost is added (a late "ok" must not reset the failure streak)."""
+        if not remote or cost_usd is None:
+            return
+        with self._lock:
+            self.usd_spent += cost_usd
+            if self.usd_spent >= self.max_usd and (self._running or self._step_pending):
+                self._pause("budget")
+
     def record(self, slot: str, status: str, remote: bool, cost_usd: float | None, error_kind: str | None) -> None:
         """One agent outcome, stale and late ones included (they were sent, so they may have cost money)."""
         if status == "skipped":

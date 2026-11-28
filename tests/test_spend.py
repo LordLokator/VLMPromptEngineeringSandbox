@@ -191,3 +191,18 @@ def test_disconnect_while_paused_keeps_the_reason(clock):
 
 def test_unknown_action_is_refused(clock):
     assert controller(clock).control("spend-all", remote=True) == "Unknown action 'spend-all'"
+
+
+def test_a_late_answer_adds_its_cost_only(clock):
+    spend = controller(clock)
+    spend.control("run", remote=True)
+    for _ in range(2):
+        spend.record("A", "timeout", remote=True, cost_usd=None, error_kind="timeout")
+        spend.record_late(remote=True, cost_usd=0.01)  # the stuck call answered after all
+    assert spend.paid_calls == 2 and spend.usd_spent == pytest.approx(0.02)
+    spend.record("A", "timeout", remote=True, cost_usd=None, error_kind="timeout")
+    assert spend.snapshot()["pause_reason"] == "failures"  # late answers did not reset the streak
+    spend.control("run", remote=True)
+    spend.record_late(remote=True, cost_usd=0.60)
+    assert spend.snapshot()["pause_reason"] == "budget"
+    spend.record_late(remote=False, cost_usd=None)  # local: nothing to count
