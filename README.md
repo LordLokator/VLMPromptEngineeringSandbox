@@ -17,8 +17,8 @@
   checks](#ml-stack-what-was-checked), which do not show that the real model works.
 - **What it is:** a small proof of concept for one user on localhost. It is not a production service.
 - **Where it is heading:** two models of your choice answering the same video side by side, with latency, token and cost
-  figures, usable without a GPU. **Mostly planned:** so far the app runs without a GPU with a demo agent. See
-  [Roadmap](#roadmap-compare-two-models).
+  figures, usable without a GPU. **Mostly planned:** so far the app runs without a GPU with a demo agent, and the API
+  adapters can be tried from the command line. See [Roadmap](#roadmap-compare-two-models).
 
 <img width="100%" alt="Web UI: video stream, preset buttons and prompt controls on the left, chat panel on the right" src="https://github.com/user-attachments/assets/e5600752-73b2-404c-997b-cb4f48cd624d" />
 
@@ -220,7 +220,7 @@ Only these variables configure a provider. The OpenAI SDK would also read `OPENA
 `OPENAI_BASE_URL`, `OPENAI_CUSTOM_HEADERS` and others by itself; the app clears them, so nothing meant for OpenAI
 reaches another server; likewise `ANTHROPIC_BASE_URL`, `ANTHROPIC_CUSTOM_HEADERS` and the Anthropic SDK's own
 OpenTelemetry spans (`ANTHROPIC_OPEN_TELEMETRY*`) are not used. Provider clients do not follow redirects and do not
-retry.
+retry; each call times out after 30 s (120 s for Ollama, where a cold model load can take a while).
 
 | Variable | Default | Meaning |
 |---|---|---|
@@ -259,8 +259,8 @@ python -m utils.providers.check ollama <model> --fps 3       # 2 of the 5 frames
 ```
 
 Providers: `openai`, `anthropic`, `ollama`, `compat` (and `demo`). Anthropic gets no `temperature`: the API version
-the pinned SDK sends rejects sampling parameters. One call sends up to 5 frames (at most 768 px on the long edge)
-and asks for at most 1024 output tokens; a paid provider charges for it. It prints the answer, finish reason, token
+the pinned SDK sends (2026-10-21) has no sampling parameters in its Messages API. One call sends up to 5 frames (at
+most 768 px on the long edge) and asks for at most 1024 output tokens; a paid provider charges for it. It prints the answer, finish reason, token
 counts, latency, estimated cost and the parameters actually sent, never the key. If a model rejects `temperature`, the call is
 repeated once without it, and that model is not sent one again during the run. **The adapters are unit-tested only:
 none has answered a real call yet** (they were checked against a local stub server).
@@ -373,13 +373,13 @@ once against `grafana/otel-lgtm:0.41.1` on 2026-11-26 with a mocked backend, ove
 ## Roadmap: compare two models
 
 The goal for the first release: pick two models, play a video, and compare what they say about the same moment, and what
-it costs. **Only the first row has started:** the app runs one agent, chosen at startup: the demo agent (no model, the
-default) or the local model.
+it costs. **Only the first two rows have started:** the app runs one agent, chosen at startup: the demo agent (no model,
+the default) or the local model.
 
 | Planned | What it means |
 |---|---|
 | Run without a GPU | A base install that starts with built-in demo agents (no model); the local VideoLLaMA3 becomes optional. **Done for one agent:** `pip install .` runs the app with the demo agent. |
-| Your own models | OpenAI, Anthropic, Ollama or any OpenAI-compatible URL. Keys and URLs come from environment variables. |
+| Your own models | OpenAI, Anthropic, Ollama or any OpenAI-compatible URL. Keys and URLs come from environment variables. **Started:** the adapters exist and can be tried with the [provider check](#checking-a-provider); the app cannot select them yet. |
 | Model selection | Choose each agent's provider and model in the UI while the app runs. |
 | Side-by-side view | Video in the middle, one agent on each side. Both get the same sampled frames, and the page shows them. |
 | Metrics | Latency, tokens and estimated cost per answer (or "n/a" when unknown), in a panel you can hide. |
@@ -393,8 +393,9 @@ Design choices behind the plan:
 - **Frames, not video files,** go to remote models: it is the input form these APIs have in common.
 - **Remote models are opt-in.** Using one sends frames of your video to that provider and may cost money.
 
-Already in place to build on: the agent contract with the demo and local agents (`utils/providers/`) and optional
-OpenTelemetry (see [Observability](#observability-opentelemetry)).
+Already in place to build on: the agent contract with the demo and local agents, the API adapters and the price
+snapshot (`utils/providers/`, `utils/prices.json`), and optional OpenTelemetry (see
+[Observability](#observability-opentelemetry)).
 
 ## Tools
 
