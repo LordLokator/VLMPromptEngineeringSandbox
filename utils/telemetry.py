@@ -131,10 +131,12 @@ def record_drop() -> None:
         _state.dropped.add(1)
 
 
-def record_ws_message(role: object) -> None:
+def record_ws_message(kind: object) -> None:
     if _state is not None:
-        # Client-controlled: collapse to a fixed set so the label cannot explode.
-        _state.messages.add(1, {"role": "user" if role == "user" else "other"})
+        from utils.session import CLIENT_TYPES
+
+        # Client-controlled: collapse to the known frame types plus "other", so the label cannot explode.
+        _state.messages.add(1, {"type": kind if kind in CLIENT_TYPES else "other"})
 
 
 def ws_connection(delta: int) -> None:

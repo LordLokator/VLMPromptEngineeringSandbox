@@ -11,9 +11,12 @@ from fastapi.staticfiles import StaticFiles
 from starlette.middleware.trustedhost import TrustedHostMiddleware
 from loguru import logger
 import threading
+from typing import Any
 import uvicorn
 
 from utils import telemetry
+from utils.errors import log_failure
+from utils.session import CLIENT_TYPES, message
 from utils.hosts import LOOPBACK_HOSTS, parse_allowed_hosts, require_extra_hosts
 from utils.file_management import BASE_DIR
 from video_handling.streaming import mjpeg_stream
@@ -43,6 +46,45 @@ app = FastAPI(
     openapi_url="/openapi.json" if IS_LOOPBACK else None,
 )
 
+class SafeErrors:
+    """Stops exceptions inside the app with a fixed reply: HTTP 500, or WebSocket close 1011.
+
+    With OTEL_ENABLED=1, the instrumentation would otherwise copy an exception's message and stack onto the server span,
+    and those can quote paths or keys. User middlewares run inside its exception recorder, so this one catches first.
+    """
+
+    def __init__(self, app: Any):
+        self.app = app
+
+    async def __call__(self, scope: dict, receive: Any, send: Any) -> None:
+        if scope["type"] not in ("http", "websocket"):
+            await self.app(scope, receive, send)
+            return
+        started = False
+
+        async def tracking_send(event: dict) -> None:
+            nonlocal started
+            if event["type"] == "http.response.start":
+                started = True
+            await send(event)
+
+        try:
+            await self.app(scope, receive, tracking_send)
+        except Exception as e:  # noqa: BLE001 - the boundary: nothing below may reach the server span
+            log_failure(f"Unhandled error in {scope['type']} {scope.get('path', '')}", e)
+            try:
+                if scope["type"] == "websocket":
+                    await send({"type": "websocket.close", "code": 1011})
+                elif not started:
+                    await send({"type": "http.response.start", "status": 500,
+                                "headers": [(b"content-type", b"text/plain; charset=utf-8")]})
+                    await send({"type": "http.response.body", "body": b"Internal Server Error"})
+            except Exception:  # noqa: BLE001 - the connection is already gone
+                pass
+
+
+app.add_middleware(SafeErrors)
+
 # DNS rebinding: a page on another domain can resolve its name to this machine, and its Origin then matches
 # its Host. Only the names below are served, for HTTP and the WebSocket alike.
 app.add_middleware(TrustedHostMiddleware, allowed_hosts=[*LOOPBACK_HOSTS, *EXTRA_HOSTS], www_redirect=False)
@@ -68,33 +110,30 @@ MAX_TEXT_CHARS = 2000
 WS_MAX_BYTES = 64 * 1024
 
 
-def emit(kind: str, text: str, **extra: float | bool) -> dict:
-    """Build a server -> client frame: {"type": "vlm"|"error"|"system", "text": str, ...}."""
-    return {"type": kind, "text": text, **extra}
+def emit(kind: str, text: str, **extra: Any) -> dict:
+    """Build a `system` or `error` frame: {"type": kind, "text": str, ...}."""
+    return message(kind, text, **extra)
 
 
 def parse_client_message(raw: str) -> tuple[dict | None, str | None]:
-    """Return (message, None) for a valid client frame, else (None, error text)."""
+    """Return (message, None) for a valid client frame, else (None, error text). Fields are checked by the session."""
     try:
         msg = json.loads(raw)
     except json.JSONDecodeError:
         return None, "Invalid JSON"
     if not isinstance(msg, dict):
         return None, "Message must be a JSON object"
-    text = msg.get("text", "")
-    if not isinstance(text, str):
-        return None, "text must be a string"
-    if len(text) > MAX_TEXT_CHARS:
+    if msg.get("type") not in CLIENT_TYPES:
+        return None, f"type must be one of: {', '.join(CLIENT_TYPES)}"
+    text = msg.get("text")
+    if isinstance(text, str) and len(text) > MAX_TEXT_CHARS:
         return None, f"text too long (max {MAX_TEXT_CHARS} characters)"
-    if not isinstance(msg.get("role", ""), str):
-        return None, "role must be a string"
     return msg, None
 
 
 @app.websocket("/ws")
 async def websocket_endpoint(ws: WebSocket):
-    prompt = ws.app.state.prompt
-    settings = ws.app.state.settings
+    session = ws.app.state.session
 
     # Browsers always send Origin; reject cross-site pages. Non-browser clients send none.
     origin = ws.headers.get("origin")
@@ -108,53 +147,20 @@ async def websocket_endpoint(ws: WebSocket):
     telemetry.ws_connection(1)
 
     try:
+        await ws.send_text(json.dumps(await asyncio.to_thread(session.state)))
         while True:
             raw = await ws.receive_text()
             msg, err = parse_client_message(raw)
             if msg is None:
+                telemetry.record_ws_message(None)
                 logger.warning(f"Rejected client frame: {err}")
                 await ws.send_text(json.dumps(emit("error", err or "invalid message")))
                 continue
-            role = msg.get("role")
-            telemetry.record_ws_message(role)
-            text = msg.get("text", "")
-            logger.debug(f"Received msg: role={role!r} text={text[:80]!r}")
-            temperature = msg.get("temperature", None)
-
-            # Handle user commands
-            if role == "user":
-                if text == "toggle_stream":
-                    new_mode = "Live camera" if ws.app.state.hub.toggle().is_webcam else "Static video"
-                    system_msg = emit("system", f"Switched to: {new_mode}")
-                    await ws.send_text(json.dumps(system_msg))
-
-                else:
-                    resample_fps = msg.get("resample_fps", None)
-                    try:
-                        if temperature is not None:
-                            settings.set_temperature(temperature)
-                            logger.info(f"Temperature set to: {settings.get_temperature():.2f}")
-                        if resample_fps is not None:
-                            settings.set_resample_fps(resample_fps)
-                            logger.info(f"Resample fps set to: {settings.get_resample_fps()}")
-                    except ValueError as e:
-                        await ws.send_text(json.dumps(emit("error", str(e))))
-                        continue
-
-                    if text:
-                        prompt.set(text)
-                        logger.info(f"Prompt updated to: {text}")
-
-                    echo_msg = emit(
-                        "system",
-                        f"Prompt changed to: {text}, Temperature: {settings.get_temperature():.2f}, "
-                        f"Resample: {settings.effective_resample_fps():.2f} fps",
-                    )
-                    await ws.send_text(json.dumps(echo_msg))
-
-            else:
-                logger.warning(f"Unhandled role: {role}")
-                await ws.send_text(json.dumps(emit("error", f"Unknown role: {role}")))
+            telemetry.record_ws_message(msg["type"])
+            logger.debug(f"Received {msg['type']} frame")
+            # Off the event loop: the session broadcasts while holding its lock (see utils/session.py).
+            for reply in await asyncio.to_thread(session.handle, msg):
+                await ws.send_text(json.dumps(reply))
 
     except WebSocketDisconnect:
         logger.info("Client disconnected")
@@ -162,6 +168,7 @@ async def websocket_endpoint(ws: WebSocket):
         telemetry.ws_connection(-1)
         if ws in active_connections:
             active_connections.remove(ws)
+        session.disconnected(len(active_connections))  # synchronous: an await here is skipped on cancellation
 
 
 @app.get("/video_feed")
@@ -248,11 +255,10 @@ async def broadcast(message: dict) -> None:
                 active_connections.remove(ws)
 
 
-def start_server_threaded(prompt=None, settings=None, hub=None) -> uvicorn.Server:
+def start_server_threaded(session=None, hub=None) -> uvicorn.Server:
     """Run uvicorn in a daemon thread; set `.should_exit = True` on the returned server to stop it."""
 
-    app.state.prompt = prompt
-    app.state.settings = settings
+    app.state.session = session
     app.state.hub = hub
     telemetry.setup_telemetry(app)
 

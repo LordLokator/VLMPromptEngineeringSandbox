@@ -116,7 +116,8 @@ def _delete(path: str) -> None:
 class RoundRunner:
     """Runs one round at a time. `start` returns at once; `run` blocks (tests, and the round thread itself).
 
-    `on_result` gets each AgentOutcome as it arrives and `on_round_end` the RoundReport; both run on the round's
+    `on_round_start` gets (round id, clip, request) before any agent is asked, `on_result` each AgentOutcome as it
+    arrives and `on_round_end` the RoundReport; both run on the round's
     thread and must not block for long. `on_late` gets an answer that came after its round gave up on it (on the
     agent's thread): it is not shown, but a paid call still has to be counted. `current_epoch` reads the live
     source epoch.
@@ -126,6 +127,7 @@ class RoundRunner:
         self,
         *,
         current_epoch: Callable[[], int],
+        on_round_start: Callable[[int, ClipSample, GenerateRequest], None] = lambda _i, _c, _r: None,
         on_result: Callable[[AgentOutcome], None] = lambda _o: None,
         on_round_end: Callable[[RoundReport], None] = lambda _r: None,
         on_late: Callable[[AgentOutcome], None] = lambda _o: None,
@@ -133,6 +135,7 @@ class RoundRunner:
         delete_clip: Callable[[str], None] = _delete,
     ):
         self._current_epoch = current_epoch
+        self._on_round_start = on_round_start
         self._on_result = on_result
         self._on_round_end = on_round_end
         self._on_late = on_late
@@ -190,6 +193,10 @@ class RoundRunner:
         outcomes: list[AgentOutcome] = []
         try:
             request = request_for(clip, settings)
+            try:
+                self._on_round_start(round_id, clip, request)
+            except Exception as e:  # noqa: BLE001 - a broken listener must not stop the rounds
+                log_failure("Round start listener failed", e)
             inbox = _Mailbox()  # closed when the round stops listening; later answers go to on_late
             for slot in active:
                 threading.Thread(

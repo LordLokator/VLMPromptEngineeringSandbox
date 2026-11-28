@@ -178,3 +178,13 @@ def test_a_broken_listener_does_not_stop_the_round(make_agent):
     runner = RoundRunner(current_epoch=lambda: 0, on_result=broken, on_round_end=broken, delete_clip=deleted.append)
     report = runner.run(clip(), [slot("A", make_agent())], SETTINGS)
     assert report.outcomes[0].status == "ok" and deleted == ["clip-7.mp4"]
+
+
+def test_round_start_comes_before_any_result(make_agent):
+    events = []
+    runner = RoundRunner(
+        current_epoch=lambda: 0, on_round_start=lambda rid, c, req: events.append(("start", rid, req.prompt)),
+        on_result=lambda o: events.append(("result", o.round_id, o.slot)), delete_clip=lambda _p: None,
+    )
+    runner.run(clip(), [slot("A", make_agent())], SETTINGS)
+    assert events == [("start", 1, "what happens?"), ("result", 1, "A")]

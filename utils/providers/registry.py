@@ -163,6 +163,19 @@ class AgentRegistry:
                 raise AgentConfigError(f"VLM_AGENT_{name}={spec.text}: {e}") from e
         return slots
 
+    def check_spec(self, spec: AgentSpec) -> None:
+        """What can be checked before anything starts: the provider's key or URL and the remote-bind block.
+
+        hf is checked when it loads. Raises AgentConfigError.
+        """
+        if spec.provider == "hf":
+            return
+        available = self.availability(spec.provider)
+        if not available.available:
+            raise AgentConfigError(available.reason or f"{spec.provider} is not available")
+        if self.remote_paid_blocked and spec.model and not is_local(spec.provider, spec.model):
+            raise AgentConfigError(PAID_BLOCKED)
+
     def _fill(self, slot: str, spec: AgentSpec, enabled: bool) -> Slot:
         available = self.availability(spec.provider)
         if not available.available:

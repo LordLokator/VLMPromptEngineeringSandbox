@@ -11,11 +11,8 @@ import web_engine
 
 
 @pytest.fixture
-def client(monkeypatch):
-    monkeypatch.setattr(web_engine.app.state, "prompt", None, raising=False)
-    monkeypatch.setattr(web_engine.app.state, "settings", None, raising=False)
-    web_engine.active_connections.clear()
-    return TestClient(web_engine.app)
+def client(compare_app):
+    return compare_app.client
 
 
 def test_default_host_is_loopback():
@@ -30,12 +27,11 @@ def test_mismatching_origin_rejected(client):
 
 
 def test_matching_and_missing_origin_accepted(client):
-    with client.websocket_connect("/ws", headers={"origin": "http://testserver"}) as ws:
-        ws.send_text(json.dumps({"role": "other"}))
-        assert ws.receive_json()["type"] == "error"
-    with client.websocket_connect("/ws") as ws:
-        ws.send_text(json.dumps({"role": "other"}))
-        assert ws.receive_json()["type"] == "error"
+    for headers in ({"origin": "http://testserver"}, {}):
+        with client.websocket_connect("/ws", headers=headers) as ws:
+            assert ws.receive_json()["type"] == "state"
+            ws.send_text(json.dumps({"type": "other"}))
+            assert ws.receive_json()["type"] == "error"
 
 
 def test_save_preset_requires_json_content_type(client):

@@ -1,26 +1,26 @@
 import subprocess
 import sys
-import threading
-from concurrent.futures import ThreadPoolExecutor
 
 import pytest
 
-from main import make_clip_handler, process_clip
 from utils import telemetry
+from utils.providers.agents import AgentSpec
+from utils.providers.registry import Slot
+from utils.rounds import RoundRunner, RoundSettings
 from video_handling.clip_handling import ClipSample
 
 PROMPT = "SECRET-PROMPT-TEXT"
 
 
 def sample(path):
-    return ClipSample(0, "sample:1", 0, "Sample 1", 0.0, 0.5, 0, str(path))
+    return ClipSample(0, "sample:1", 0, "Sample 1", 0.0, 0.5, 0, str(path), (b"x",) * 5, (0.0,) * 5)
 
 
-def run(vlm):
-    process_clip(
-        sample("c.mp4"), vlm, lambda m: None, get_prompt=lambda: PROMPT,
-        get_temperature=lambda: 0.5, get_fps=lambda: 3, get_source_epoch=lambda: 0, max_frames=20,
-    )
+def run(agent):
+    """One round with one agent: the span and metrics per agent call come from the round runner."""
+    runner = RoundRunner(current_epoch=lambda: 0, delete_clip=lambda _p: None)
+    slot = Slot("A", AgentSpec(agent.provider, agent.model), agent, True, False)
+    runner.run(sample("c.mp4"), [slot], RoundSettings(PROMPT, 0.5, 3, 10))
 
 
 def test_disabled_imports_no_opentelemetry():
@@ -96,28 +96,27 @@ def test_error_sets_status_and_counts(otel, make_agent):
     assert p["vlm.inference.duration"][0].attributes["outcome"] == "error"
 
 
-def test_drop_counter_increments_when_busy(otel, tmp_path):
+def test_drop_counter_increments_when_busy(otel, compare_app):
     _, reader = otel
-    gate = threading.Event()
-    executor = ThreadPoolExecutor(max_workers=1)
-    handler = make_clip_handler(lambda p: gate.wait(5), executor, threading.Lock())
-    a, b = tmp_path / "a", tmp_path / "b"
-    a.write_bytes(b"x")
-    b.write_bytes(b"x")
-    handler(sample(a))
-    handler(sample(b))
-    gate.set()
-    executor.shutdown(wait=True)
+    compare_app.options = {"hang_on": {1}}
+    compare_app.registry.set_agent("A", "demo", "frame-motion")
+    session = compare_app.session
+    session.spend.control("run", remote=False)
+    session.on_clip(sample("a.mp4"))
+    assert compare_app.agents["demo:frame-motion"].started.wait(5)
+    session.on_clip(sample("b.mp4"))  # the first round is still running
+    for agent in compare_app.agents.values():
+        agent.release.set()
     assert points(reader)["vlm.clips.dropped"][0].value == 1
 
 
-def test_ws_role_label_is_bounded(otel):
+def test_ws_type_label_is_bounded(otel):
     _, reader = otel
-    for role in ("user", "evil-1", "evil-2", None):
-        telemetry.record_ws_message(role)
+    for kind in ("control", "set_agent", "evil-1", "evil-2", None):
+        telemetry.record_ws_message(kind)
     telemetry.ws_connection(1)
     p = points(reader)
-    assert {dp.attributes["role"] for dp in p["ws.messages"]} == {"user", "other"}
+    assert {dp.attributes["type"] for dp in p["ws.messages"]} == {"control", "set_agent", "other"}
     assert p["ws.connections"][0].value == 1
 
 
@@ -138,3 +137,36 @@ def test_exception_text_stays_out_of_telemetry(otel, make_agent):
     dump = span.to_json() + repr(points(reader))
     assert PROMPT not in dump
     assert "c.mp4" not in dump
+
+
+def test_route_error_text_stays_off_the_server_span(compare_app, monkeypatch):
+    """With the FastAPI instrumentation on, an unhandled route error must leave its message nowhere in the span."""
+    pytest.importorskip("opentelemetry.instrumentation.fastapi")
+    from opentelemetry.instrumentation.fastapi import FastAPIInstrumentor
+    from opentelemetry.sdk.trace import TracerProvider
+    from opentelemetry.sdk.trace.export import SimpleSpanProcessor
+    from opentelemetry.sdk.trace.export.in_memory_span_exporter import InMemorySpanExporter
+
+    import web_engine
+
+    sentinel = "/private/path/" + "sentinel-route-error"
+
+    def broken():
+        raise OSError(f"cannot read {sentinel}")
+
+    monkeypatch.setattr(web_engine, "load_presets", broken)
+    exporter = InMemorySpanExporter()
+    provider = TracerProvider()
+    provider.add_span_processor(SimpleSpanProcessor(exporter))
+    app = web_engine.app
+    FastAPIInstrumentor.instrument_app(app, tracer_provider=provider)
+    app.middleware_stack = None  # rebuilt on the next request, now with the instrumentation
+    try:
+        response = compare_app.client.get("/preset_buttons")
+    finally:
+        FastAPIInstrumentor.uninstrument_app(app)
+    assert response.status_code == 500 and response.text == "Internal Server Error"
+    spans = exporter.get_finished_spans()
+    assert spans
+    dump = " ".join(span.to_json() for span in spans)
+    assert sentinel not in dump and "cannot read" not in dump

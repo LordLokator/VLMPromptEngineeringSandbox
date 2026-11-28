@@ -15,6 +15,14 @@ import web_engine
 from utils.logging_setup import configure_logging
 
 
+class StubSession:
+    def state(self):
+        return {"type": "state"}
+
+    def disconnected(self, _remaining):
+        pass
+
+
 @pytest.fixture
 def server(monkeypatch):
     for module, name in ((sys, "excepthook"), (threading, "excepthook"), (sys, "unraisablehook")):
@@ -26,6 +34,7 @@ def server(monkeypatch):
     monkeypatch.setattr(web_engine, "PORT", 0)  # any free port
     monkeypatch.setattr(web_engine.app.state, "prompt", None, raising=False)
     monkeypatch.setattr(web_engine.app.state, "settings", None, raising=False)
+    monkeypatch.setattr(web_engine.app.state, "session", StubSession(), raising=False)
     web_engine.active_connections.clear()
     instance = web_engine.make_server()
     thread = threading.Thread(target=instance.run, daemon=True)

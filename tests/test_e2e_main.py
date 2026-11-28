@@ -1,4 +1,4 @@
-"""The real `python main.py` with the demo agent on a loopback port: startup, one answer over /ws, clean stop.
+"""The real `python main.py` with both demo agents on a loopback port: startup, Run, one round over /ws, clean stop.
 
 A subprocess, because the signal handlers need the main thread. Every variable the app reads is set (empty counts as
 unset), so a developer's `.env` cannot change the run. Bundled sample, no webcam, no network beyond loopback.
@@ -75,17 +75,21 @@ def test_demo_app_answers_and_stops_cleanly():
     )
     try:
         with wait_for_socket(f"ws://127.0.0.1:{port}/ws", proc) as ws:
+            assert json.loads(ws.recv(timeout=10))["type"] == "state"
+            ws.send(json.dumps({"type": "control", "action": "run"}))  # the app starts paused
             deadline = time.monotonic() + ANSWER_LIMIT_S
-            answer = None
-            while answer is None and time.monotonic() < deadline:
+            frames = []
+            while not any(f["type"] == "round_end" for f in frames) and time.monotonic() < deadline:
                 try:
-                    frame = json.loads(ws.recv(timeout=max(0.1, deadline - time.monotonic())))
+                    frames.append(json.loads(ws.recv(timeout=max(0.1, deadline - time.monotonic()))))
                 except TimeoutError:
                     break
-                if frame.get("type") == "vlm":
-                    answer = frame
-            assert answer is not None, "no answer frame in time"
-            assert answer["text"].startswith("Demo (no model): ")
+            kinds = [f["type"] for f in frames if f["type"] in ("round", "result", "round_end")]
+            assert kinds[:1] == ["round"] and kinds[-1:] == ["round_end"], kinds
+            results = {f["slot"]: f for f in frames if f["type"] == "result"}
+            assert results["A"]["text"].startswith("Demo (no model): ")
+            assert results["B"]["text"].startswith("Demo (no model), motion: ")
+            assert results["A"]["round_id"] == results["B"]["round_id"]
 
         if sys.platform == "win32":
             proc.terminate()  # no SIGINT for a child here; the exit code says nothing on Windows
@@ -104,4 +108,4 @@ def test_demo_app_answers_and_stops_cleanly():
     lines = [line for line in output.splitlines() if line.strip()]
     foreign = [line for line in lines if not LOG_LINE.match(line) and not line[:1].isspace()]
     assert not foreign, foreign
-    assert "Agent A: demo:frame-facts" in output
+    assert "Agent A: demo:frame-facts" in output and "Agent B: demo:frame-motion" in output

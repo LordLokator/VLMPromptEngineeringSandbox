@@ -80,6 +80,7 @@ dev = [
     "httpx",                  # required by Starlette's TestClient
     "pyyaml",                 # tests/test_workflows.py: workflow/dependabot structure test
     "opentelemetry-sdk",      # tests/test_telemetry.py: in-memory span/metric exporters
+    "opentelemetry-instrumentation-fastapi",  # tests/test_telemetry.py: no exception text on the server span
     "websockets",             # tests/test_e2e_main.py: sync WebSocket client; uvicorn[standard] constrains the version
 ]
 
