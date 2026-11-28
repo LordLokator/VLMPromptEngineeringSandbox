@@ -23,9 +23,9 @@ from utils.providers.settings import ANTHROPIC_URL, OPENAI_URL, check_model_id, 
 from utils.rounds import CALL_TIMEOUT_S, AgentOutcome, RoundReport, RoundRunner, RoundSettings
 from utils.spend import ACTIONS, SpendController
 from video_handling.clip_handling import ClipSample
-from video_handling.source import SAMPLE_PATHS, WEBCAM_KEY, make_spec
+from video_handling.source import WEBCAM_KEY, selectable
 
-CLIENT_TYPES = ("update", "control", "set_agent", "list_models", "set_source")
+CLIENT_TYPES = ("update", "control", "set_agent", "list_models", "set_source", "list_sources")
 SERVER_TYPES = ("state", "round", "result", "round_end", "models", "system", "error")
 THUMB_EDGE = 160  # px, long edge of the frame thumbnails in the `round` frame
 THUMB_QUALITY = 70
@@ -110,7 +110,7 @@ class CompareSession:
 
     def state(self) -> dict:
         spec = self.hub.spec
-        sources = [make_spec(f"sample:{n}", 0) for n in range(1, len(SAMPLE_PATHS) + 1)] + [make_spec(WEBCAM_KEY, 0)]
+        sources = selectable(self.hub.media)  # as of the last scan: a state frame never reads the disk
         return {
             "type": "state",
             "providers": [
@@ -245,6 +245,8 @@ class CompareSession:
                 return self._list_models(msg)
             if kind == "set_source":
                 return self._set_source(msg)
+            if kind == "list_sources":
+                return self._list_sources()
         except _BadRequest as e:
             return [message("error", str(e), request=kind)]
         return [message("error", f"Unknown message type: {kind!r}")]
@@ -322,6 +324,8 @@ class CompareSession:
         key, confirm = msg.get("source_key"), msg.get("confirm", False)
         if not isinstance(key, str):
             raise _BadRequest("source_key must be a string")
+        if self.hub.media.scan():  # a key from the last listing keeps its file; a deleted file is refused below
+            self.broadcast_state()
         with self._lock:
             if key == WEBCAM_KEY and self.registry.any_remote() and confirm is not True:
                 return [message("error", CONFIRM_WEBCAM, request="set_source", confirm="webcam_remote")]
@@ -331,6 +335,13 @@ class CompareSession:
                 raise _BadRequest(str(e)) from e
             self._broadcast(self.state())
         return []
+
+    def _list_sources(self) -> list[dict]:
+        """Rescan `media/` (files copied there while the app runs). Everyone gets the new list if it changed."""
+        if self.hub.media.scan():
+            self.broadcast_state()
+            return []
+        return [self.state()]
 
 
 class _BadRequest(ValueError):

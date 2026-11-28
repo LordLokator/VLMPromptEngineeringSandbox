@@ -42,7 +42,7 @@ def test_source_specs():
     assert (spec.source_key, spec.source_epoch, spec.is_webcam) == ("sample:2", 4, False)
     assert spec.label == "Sample 2 (street_view_2.mp4)"
     assert make_spec("webcam", 0).is_webcam
-    for key in ("sample:0", "sample:3", "media:1", "../x"):
+    for key in ("sample:0", "sample:3", "../x"):
         with pytest.raises(ValueError):
             make_spec(key, 0)
     with pytest.raises(AttributeError):
@@ -304,9 +304,14 @@ def wait_until(condition, timeout=5.0):
 
 
 @pytest.mark.parametrize(
-    "cap", [ScriptCap([]), ScriptCap([], opened=False)], ids=["no-frames", "cannot-open"]
+    ("cap", "reason"),
+    [
+        (ScriptCap([]), "no frame could be decoded"),
+        (ScriptCap([], opened=False), "the file cannot be opened as a video"),
+    ],
+    ids=["no-frames", "cannot-open"],
 )
-def test_unusable_file_ends_in_an_error_and_does_not_spin(cap):
+def test_unusable_file_ends_in_an_error_and_does_not_spin(cap, reason):
     errors: list[str] = []
     hub, _clock, caps = fake_hub(lambda _spec: cap, on_error=errors.append)
     sink = Collector(hub, lambda _c: False)
@@ -314,7 +319,7 @@ def test_unusable_file_ends_in_an_error_and_does_not_spin(cap):
     try:
         wait_until(lambda: errors)
         time.sleep(0.2)
-        assert errors == ["Capture source failed: Could not read or decode the data (CaptureError)"]
+        assert errors == [f"Capture source failed: Could not read or decode the data (CaptureError): {reason}"]
         assert hub.error == errors[0]
         assert len(caps) == 1 and cap.released == 1
         assert sink.clips == [] and sink.fed == []

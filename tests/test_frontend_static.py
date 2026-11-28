@@ -44,7 +44,7 @@ def test_unknown_values_render_as_na_never_zero():
 def test_speaks_the_typed_protocol_only():
     for kind in ("state", "round", "result", "round_end", "models", "system", "error"):
         assert f'"{kind}"' in JS
-    for kind in ("update", "control", "set_agent", "list_models", "set_source"):
+    for kind in ("update", "control", "set_agent", "list_models", "set_source", "list_sources"):
         assert f'type: "{kind}"' in JS
     assert "role:" not in JS and "toggle_stream" not in JS and '"vlm"' not in JS
     assert 'confirm === "webcam_remote"' in JS and "confirm: true" in JS
@@ -110,3 +110,12 @@ def test_state_frames_keep_unapplied_agent_picks():
     slot = function_body("renderSlot")
     assert "card.dirty ? select.value" in slot and "if (!card.dirty) r(\"model\").value" in slot
     assert "card.dirty = true" in JS and "card.dirty = false" in JS
+
+
+def test_source_picker_sends_only_server_issued_keys():
+    render = function_body("renderSources")
+    assert '["sample:", ' in JS and '["media:", ' in JS and '["webcam", ' in JS
+    assert "option.value = s.key;" in render and "String(s.label)" in render
+    assert 'send({ type: "set_source", source_key: $("sourceSelect").value });' in JS
+    assert 'id="sourceRescanBtn"' in HTML
+    assert '$("sourceRescanBtn").onclick = () => send({ type: "list_sources" });' in JS
