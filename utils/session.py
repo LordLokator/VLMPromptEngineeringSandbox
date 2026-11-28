@@ -213,7 +213,8 @@ class CompareSession:
 
     def _late(self, outcome: AgentOutcome) -> None:
         with self._lock:
-            self._record(outcome)
+            cost = outcome.result.cost_usd if outcome.result is not None else None
+            self.spend.record_late(outcome.remote, cost)
             self._broadcast(self.state())
 
     def _record(self, outcome: AgentOutcome) -> None:

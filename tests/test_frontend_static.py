@@ -104,3 +104,9 @@ def test_page_has_no_unprotected_external_assets():
     assert bad == []
     assert (SRC / "vendor" / "bootstrap.min.css").is_file()
     assert (SRC / "vendor" / "bootstrap.LICENSE").is_file()
+
+
+def test_state_frames_keep_unapplied_agent_picks():
+    slot = function_body("renderSlot")
+    assert "card.dirty ? select.value" in slot and "if (!card.dirty) r(\"model\").value" in slot
+    assert "card.dirty = true" in JS and "card.dirty = false" in JS

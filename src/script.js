@@ -209,7 +209,8 @@ function renderSlot(slot, info, providers) {
     const card = cards[slot];
     const r = card.role;
     const select = r("provider");
-    const current = info ? info.provider : "demo";
+    // While the user has unapplied picks (card.dirty), a state frame must not reset them.
+    const current = card.dirty ? select.value : (info ? info.provider : "demo");
     select.replaceChildren(...providers.map((p) => {
         const option = el("option", null, p.available ? p.id : `${p.id} (unavailable)`);
         option.value = p.id;
@@ -217,9 +218,9 @@ function renderSlot(slot, info, providers) {
         option.title = p.reason || "";
         return option;
     }));
-    if (document.activeElement !== select) select.value = current;
+    select.value = current;
     if (!info) return;
-    if (document.activeElement !== r("model")) r("model").value = info.model || "";
+    if (!card.dirty) r("model").value = info.model || "";
     r("enabled").checked = info.enabled;
     r("badge").textContent = info.provider === "demo" ? "demo: no model" : info.label;
     r("badge").className = `badge ${info.provider === "demo" ? "text-bg-warning" : "text-bg-secondary"}`;
@@ -366,7 +367,7 @@ function buildCard(slot) {
     const node = $("cardTemplate").content.firstElementChild.cloneNode(true);
     $(`slot${slot}`).appendChild(node);
     const role = (name) => node.querySelector(`[data-role="${name}"]`);
-    const card = { el: node, role, latest: null, pendingList: null,
+    const card = { el: node, role, latest: null, pendingList: null, dirty: false,
         totals: { calls: 0, errors: 0, latencies: [], input: 0, output: 0, cost: 0, unpriced: 0 } };
     role("title").textContent = `Agent ${slot}`;
     role("models").id = `models${slot}`;
@@ -380,12 +381,14 @@ function buildCard(slot) {
     };
     const apply = () => {
         const model = role("model").value.trim();
-        send({ type: "set_agent", slot, provider: role("provider").value, model: model || null,
-            enabled: role("enabled").checked });
+        if (send({ type: "set_agent", slot, provider: role("provider").value, model: model || null,
+            enabled: role("enabled").checked })) card.dirty = false;
     };
     role("applyBtn").onclick = apply;
     role("enabled").onchange = apply;
+    role("model").addEventListener("input", () => { card.dirty = true; });
     role("provider").onchange = () => {
+        card.dirty = true;
         role("model").value = "";
         role("models").replaceChildren();
         role("listInfo").textContent = "";
