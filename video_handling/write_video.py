@@ -27,3 +27,11 @@ def write_video(frames: list[np.ndarray], video_path: str, fps: int = 60):
     except Exception as e:
         logger.error(f"{type(e).__name__} at Video Writing")
         raise
+
+
+def encode_jpeg(frame: np.ndarray) -> bytes:
+    """One frame as JPEG bytes (OpenCV's default quality)."""
+    ok, buffer = cv2.imencode(".jpg", frame)
+    if not ok:
+        raise ValueError("JPEG encoding failed")
+    return buffer.tobytes()

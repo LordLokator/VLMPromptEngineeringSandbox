@@ -4,6 +4,7 @@ from concurrent.futures import ThreadPoolExecutor
 import pytest
 
 from main import make_clip_handler, process_clip
+from utils.providers import Result
 from video_handling.clip_handling import ClipSample
 from video_handling.streaming import CaptureHub
 
@@ -12,22 +13,37 @@ def sample(path="c.mp4", epoch=0):
     return ClipSample(0, "sample:1", epoch, "Sample 1", 0.0, 0.5, 0, str(path))
 
 
+def result(text):
+    return Result(text, "stop", "m", "m", None, None, None, None, 1.0, None, None)
+
+
 class FakeVLM:
+    """A provider that records the requests it gets."""
+
+    provider, model, label = "demo", "m", "demo:m"
+
     def __init__(self, fail=False):
         self.fail = fail
-        self.temps = []
+        self.requests = []
 
-    def forward(self, video_path, fps, max_frames, temperature):
-        self.temps.append(temperature)
+    @property
+    def temps(self):
+        return [r.temperature for r in self.requests]
+
+    def list_models(self):
+        return []
+
+    def generate(self, request):
+        self.requests.append(request)
         if self.fail:
             raise RuntimeError("boom")
-        return "a car", temperature
+        return result("a car")
 
 
-def run(vlm, temp=0.5, clip="c.mp4", fps=10, epoch=lambda: 0):
+def run(vlm, temp=0.5, clip="c.mp4", fps=10, epoch=lambda: 0, prompt="what happens?"):
     sent = []
     process_clip(
-        sample(clip), vlm, sent.append,
+        sample(clip), vlm, sent.append, get_prompt=lambda: prompt,
         get_temperature=lambda: temp, get_fps=lambda: fps, get_source_epoch=epoch, max_frames=20,
     )
     return sent
@@ -47,9 +63,9 @@ def test_a_slow_result_after_a_switch_is_dropped(tmp_path, fail):
     clip.write_bytes(b"x")
 
     class SwitchedWhileThinking(FakeVLM):
-        def forward(self, video_path, fps, max_frames, temperature):
+        def generate(self, request):
             hub.select("sample:2")
-            return super().forward(video_path, fps, max_frames, temperature)
+            return super().generate(request)
 
     assert run(SwitchedWhileThinking(fail=fail), clip=clip, epoch=lambda: hub.spec.source_epoch) == []
     assert not clip.exists()
@@ -73,16 +89,18 @@ def test_temperature_getter_is_used():
     assert vlm.temps == [0.7]
 
 
-def test_resample_fps_is_passed_to_forward():
-    seen = []
-
-    class V(FakeVLM):
-        def forward(self, video_path, fps, max_frames, temperature):
-            seen.append(fps)
-            return super().forward(video_path, fps, max_frames, temperature)
-
-    run(V(), fps=3)
-    assert seen == [3]
+def test_request_carries_the_round_settings_and_the_clip():
+    vlm = FakeVLM()
+    frames, times = (b"jpeg-1", b"jpeg-2"), (1.0, 1.1)
+    clip = ClipSample(0, "sample:1", 0, "Sample 1", 1.0, 1.2, 0, "c.mp4", frames, times)
+    process_clip(
+        clip, vlm, lambda _m: None, get_prompt=lambda: "count the cars",
+        get_temperature=lambda: 0.3, get_fps=lambda: 3, get_source_epoch=lambda: 0, max_frames=20,
+    )
+    (request,) = vlm.requests
+    assert (request.prompt, request.temperature, request.fps, request.max_frames) == ("count the cars", 0.3, 3, 20)
+    assert (request.frames, request.frame_times, request.video_path) == (frames, times, "c.mp4")
+    assert request.system
 
 
 def test_clip_deleted_after_ok_and_error(tmp_path):
@@ -228,10 +246,10 @@ def test_signal_during_backend_load_exits_cleanly(monkeypatch):
         def stop(self):
             events.append("stop")
 
-    def slow_load(_prompt):
+    def slow_load(_spec):
         events.append("load")
         handlers[signal.SIGINT](signal.SIGINT, None)  # Ctrl+C while the model "loads"
-        return object()
+        return FakeVLM()
 
     server = Server()
     monkeypatch.setattr(app_main, "configure_logging", lambda: None)  # would replace global hooks
@@ -239,7 +257,9 @@ def test_signal_during_backend_load_exits_cleanly(monkeypatch):
     monkeypatch.setattr(app_main, "start_server_threaded", lambda *_: server)
     monkeypatch.setattr(app_main, "CaptureHub", Hub)
     monkeypatch.setattr(app_main, "ClipRecorder", Recorder)
-    monkeypatch.setattr(app_main, "make_backend", slow_load)
+    monkeypatch.setattr(app_main, "build_agent", slow_load)
+    monkeypatch.delenv("VLM_AGENT_A", raising=False)
+    monkeypatch.delenv("VLM_BACKEND", raising=False)
 
     app_main.main()
 
