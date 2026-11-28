@@ -218,7 +218,9 @@ unset.
 
 Only these variables configure a provider. The OpenAI SDK would also read `OPENAI_ORG_ID`, `OPENAI_PROJECT_ID`,
 `OPENAI_BASE_URL`, `OPENAI_CUSTOM_HEADERS` and others by itself; the app clears them, so nothing meant for OpenAI
-reaches another server. Provider clients do not follow redirects and do not retry.
+reaches another server; likewise `ANTHROPIC_BASE_URL`, `ANTHROPIC_CUSTOM_HEADERS` and the Anthropic SDK's own
+OpenTelemetry spans (`ANTHROPIC_OPEN_TELEMETRY*`) are not used. Provider clients do not follow redirects and do not
+retry.
 
 | Variable | Default | Meaning |
 |---|---|---|
@@ -230,6 +232,7 @@ reaches another server. Provider clients do not follow redirects and do not retr
 | `VLM_ENABLE_HF` | unset | `1` allows `VLM_AGENT_A=hf`, which downloads the model at a pinned revision and loads it at startup on a CUDA GPU. |
 | `VLM_BACKEND` | removed | Replaced by the two variables above; if set, the app stops at startup and names them. |
 | `OPENAI_API_KEY` | unset | Key for `openai`. Sent only to `https://api.openai.com/v1`, never to another URL. |
+| `ANTHROPIC_API_KEY` | unset | Key for `anthropic` (native Messages API). Sent only to `https://api.anthropic.com`. |
 | `OLLAMA_BASE_URL` | `http://localhost:11434` | Ollama server for `ollama` (its OpenAI-compatible `/v1` API; models listed with `/api/tags` and `/api/show`). |
 | `VLM_COMPAT_BASE_URL`, `VLM_COMPAT_API_KEY` | unset | Any OpenAI-compatible server for `compat` (OpenRouter, vLLM and others). Without a key the placeholder `EMPTY` is sent, never the OpenAI key. |
 | `OTEL_ENABLED`, `OTEL_*` | off | See [Observability](#observability-opentelemetry). |
@@ -255,7 +258,8 @@ python -m utils.providers.check openai <model>               # one call on one 0
 python -m utils.providers.check ollama <model> --fps 3       # 2 of the 5 frames, as the app would send them
 ```
 
-Providers: `openai`, `ollama`, `compat` (and `demo`). One call sends up to 5 frames (at most 768 px on the long edge)
+Providers: `openai`, `anthropic`, `ollama`, `compat` (and `demo`). Anthropic gets no `temperature`: the API version
+the pinned SDK sends rejects sampling parameters. One call sends up to 5 frames (at most 768 px on the long edge)
 and asks for at most 1024 output tokens; a paid provider charges for it. It prints the answer, finish reason, token
 counts, latency and the parameters actually sent, never the key. If a model rejects `temperature`, the call is
 repeated once without it, and that model is not sent one again during the run. **The adapters are unit-tested only:
