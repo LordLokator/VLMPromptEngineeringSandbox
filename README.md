@@ -1,14 +1,15 @@
 # Video Prompt Sandbox
 
-**Live prompt editing against a Video-LLM (VideoLLaMA3-7B) on short video clips, in the browser.**
+**Compare two vision models on the same moments of a video, live in the browser: answers, latency, tokens and estimated cost side by side. Runs without a GPU; the local VideoLLaMA3-7B is optional.**
 
 [![ci](https://github.com/LordLokator/VLMPromptEngineeringSandbox/actions/workflows/ci.yml/badge.svg)](https://github.com/LordLokator/VLMPromptEngineeringSandbox/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 
 ## Bottom line
 
-- **What it does:** cuts a video source into 0.5 s clips, asks the model your current prompt about them, and shows the answers
-  next to the video. Change the prompt, temperature or resample FPS while it runs; no restart.
+- **What it does:** cuts a video source into 0.5 s clips and asks **two agents** your prompt about the same frames of
+  each clip, then shows both answers beside the video with latency, tokens and estimated cost. Change the prompt,
+  temperature, resample FPS, agents or video while it runs; no restart.
 - **Where it comes from:** a university demo for the Prompt Engineering course (VITMAV82), since **brought up to speed in an
   LLM-augmented overhaul**: audit, bug fixes, hardening, tests, CI and optional OpenTelemetry.
 - **GPU testing:** the university version ran on **Ubuntu + RTX 4090** with `torch==2.2.0`, `transformers==4.46.3`
@@ -16,30 +17,38 @@
   by lint, compile checks and tests with the model mocked. The new pins also had [CPU-only container
   checks](#ml-stack-what-was-checked), which do not show that the real model works.
 - **What it is:** a small proof of concept for one user on localhost. It is not a production service.
-- **Where it is heading:** two models of your choice answering the same video side by side, with latency, token and cost
-  figures, usable without a GPU. **Mostly planned:** so far the app runs without a GPU with a demo agent, and the API
-  adapters can be tried from the command line. See [Roadmap](#roadmap-compare-two-models).
+- **Status:** the comparison works with the two built-in demo agents (no model). OpenAI, Anthropic, Ollama and
+  OpenAI-compatible agents can be selected in the page, but **none has answered a real call yet**: they are tested
+  with fake clients only. See [Roadmap](#roadmap-compare-two-models).
 
 <img width="100%" alt="Web UI: video stream, preset buttons and prompt controls on the left, chat panel on the right" src="https://github.com/user-attachments/assets/e5600752-73b2-404c-997b-cb4f48cd624d" />
 
-<sub>UI layout. The model replies in this screenshot are placeholder text, and it predates the resample FPS slider.</sub>
+<sub>The previous single-agent UI, with placeholder replies. It will be replaced by a screenshot of the comparison view
+from a real two-model run.</sub>
 
 ## Features
 
-- **Live prompt iteration:** the next clip that goes to the model uses the new prompt.
-- **Runtime controls:** temperature (0.01 to 1.0) and resample FPS (slider 1 to 10). The reply shows the effective
-  rate; a 5-frame clip allows only a few: see [Limitations](#limitations).
-- **Two sources:** the first bundled street video (default, looping) or a webcam, switched from the UI. The second
-  bundled video cannot be selected at the moment; source selection is planned (see
-  [Roadmap](#roadmap-compare-two-models)). The webcam is the one attached to the **server** machine, not the browser's.
+- **Two agents side by side:** agent A on the left, agent B on the right, the video in the middle. Both get the same
+  frames of the same moment; the page shows those frames, the moment's time range and which round each answer is about.
+- **Agents chosen in the page:** provider and model per side, with the provider's model list where it offers one (free
+  text always works). Unavailable providers say why (for example a missing key).
+- **Per answer:** latency, input and output tokens, estimated cost ("n/a" when unknown, "no API fee" for local agents),
+  the model and the parameters sent; session totals per agent. "Faster" and "cheaper" are marked only when both
+  answered the same round with known values; there is no quality verdict. A **Metrics** switch hides these figures.
+- **Spend control:** analysis starts paused. Run, Pause and Step (one round). With a remote agent: at least 5 s between
+  rounds and one budget of 50 rounds or $0.50 of priced calls, refilled only by "Reset budget"; auth errors, three
+  failures in a row and the last page closing pause it. Also set a spending limit at the provider.
+- **Runtime controls:** prompt, temperature (0.01 to 1.0) and resample FPS (slider 1 to 10) for the next round.
+- **Sources:** either bundled street video (looping) or the **server's** webcam, picked from the page. Sending webcam
+  frames to a remote provider asks for confirmation first.
 - **One capture:** the browser preview and the model's clips come from the same decoder, and the video plays from app
   start, also while the model is still loading. The preview is scaled down to at most 720 px high; clips keep the
   source resolution.
 - **Presets:** nine built-in street-scene prompts (dominant action, crossing, vehicle types, groups, unusual behaviour,
   activity level, sunlight, parking events, OCR); save your own from the UI.
 - **Prompt history:** each prompt change is logged with a timestamp.
-- **Failure behaviour:** inference errors appear in the chat, the browser reconnects with backoff (1 s to 10 s), and clips
-  skipped while the model is busy are reported (at most one notice per 5 s).
+- **Failure behaviour:** an agent's error or timeout shows on its card and never affects the other agent; the browser
+  reconnects with backoff (1 s to 10 s).
 - **Demo agent:** with no model configured, a demo agent answers with facts measured on the frames it received (count,
   size, brightness, change between frames). It is not a model; it lets the app run anywhere. A second variant,
   `demo:frame-motion`, says when and where the picture changes most.
@@ -60,8 +69,10 @@ pip install .
 python main.py
 ```
 
-Open <http://localhost:8000/>. The sample video plays and the demo agent answers each clip with facts measured on its
-frames. It runs no model, so its answers ignore the prompt.
+Open <http://localhost:8000/> and press **Run** (or **Step** for one round). The two demo agents answer each clip with
+facts measured on its frames: one on size, brightness and change, the other on when and where the picture changes. They
+run no model, so their answers ignore the prompt. Pick other agents in the cards, or start with `VLM_AGENT_A` /
+`VLM_AGENT_B` (see [Configuration](#configuration)).
 
 ### With the local model (CUDA GPU)
 
@@ -109,26 +120,26 @@ flowchart LR
     subgraph APP["python main.py (one process)"]
         CAP["Capture thread<br/>the only decoder"]
         REC["ClipRecorder<br/>0.5 s clips at 10 FPS, temp .mp4"]
-        GATE{"Model busy?"}
-        EXEC["Inference worker<br/>single thread"]
-        BACK["Agent A<br/>utils/providers/"]
-        VLM["demo (no model), or<br/>VideoLLaMA3-7B via utils/vlm_wrapper.py"]
-        STATE["Prompt and RuntimeSettings<br/>thread-safe"]
+        SES["CompareSession<br/>utils/session.py"]
+        SPEND["Spend control<br/>run, pause, step, budget"]
+        RUN["Round runner<br/>one round at a time"]
+        A["Agent A"]
+        B["Agent B"]
+        REG["Agent registry<br/>utils/providers/"]
         WEB["FastAPI + uvicorn thread"]
     end
 
     SRC --> CAP
-    CAP -- "frames, sampled by timestamp" --> REC --> GATE
-    GATE -- yes --> DROP["Delete clip, count it,<br/>notify UI (rate-limited)"]
-    GATE -- no --> EXEC --> BACK --> VLM
-    VLM -- text --> EXEC
-    EXEC -- broadcast --> WEB
-    DROP -- broadcast --> WEB
+    CAP -- "frames, sampled by timestamp" --> REC --> SES
+    SES -- "may a round start?" --> SPEND
+    SES -- "clip + settings" --> RUN
+    RUN -- "same request" --> A & B
+    REG -- "slot snapshot" --> SES
+    A & B -- "results as they arrive" --> SES
+    SES -- "state, round, result, round_end" --> WEB
     CAP -- "latest frame" --> WEB
     WEB <-- "WebSocket /ws" --> UI
     WEB -- "MJPEG /video_feed" --> UI
-    WEB -- writes --> STATE
-    STATE -- read per clip --> EXEC
 ```
 
 Design choices:
@@ -137,60 +148,77 @@ Design choices:
   grid by frame timestamp (each point takes the latest frame at or before it), and never span two sources or the point
   where a file starts over. If timestamps stall or go backwards, the frame rate is used instead (30 FPS if the reported
   one is implausible). A file shorter than a clip holds its last frame. Writing clips happens on another thread.
-- **A failed source stays failed** until a source is selected again (the toggle): a file that yields no frames, a missing
+- **A failed source stays failed** until a source is selected again: a file that yields no frames, a missing
   webcam, or one whose reads keep failing for 3 s. A camera read that never returns raises no error and delays a switch.
   After an error the preview shows an error image, and no clips are cut from it.
 - **Each clip knows its moment:** source, source change counter, start and end time and loop number (webcam: wall-clock
-  time). A result, answer or error, for a clip from before the last source switch is not shown. The page does not
-  display these times yet.
-- **One inference at a time, no queue.** Clips that arrive while the model is busy are dropped, so answers do not fall
-  further and further behind the video.
+  time). The `round` frame carries them with small thumbnails of the frames sent. A result for a clip from before the
+  last source switch is still shown and counted (the call was made), marked "previous source", and does not replace
+  the live answer. A clip whose source is already stale is not sent.
+- **One round at a time, in lockstep, no queue.** Both agents run in parallel; the next round starts when both have
+  answered, failed or timed out, so the slower agent sets the pace. Clips that arrive meanwhile are dropped, so answers
+  do not fall behind the video. A call stuck in an SDK is abandoned after 130 s (each provider's own timeout is
+  shorter) on a daemon thread; a late answer is not shown but still counts toward the budget.
 - **Every agent has one contract** (`utils/providers/`): `generate(request) -> Result`. The request carries the clip's
   frames as JPEG with their times, the prompt and the settings of that round, and the clip file for the local model.
   The frames are the ones the local model's loader picks at the resample FPS, scaled to at most 768 px on the long edge
   at JPEG quality 80, and the same bytes go to every agent. The
   result carries the text, latency, tokens and cost where the provider reports them (`None` otherwise), and the
-  parameters actually sent. Agent A is chosen at startup with `VLM_AGENT_A`.
+  parameters actually sent. Changing an agent applies from the next round.
 - **All GPU code sits in `utils/vlm_wrapper.py`**, with lazy imports, so everything else is testable without torch.
-- **Clips are temporary:** deleted after inference, or immediately if dropped.
+- **Clips are temporary:** deleted once both agents are done, or immediately if dropped or skipped while paused.
 - **Worker threads never touch sockets directly;** they hand messages to the server's event loop.
 
 ## Protocol
 
 ### WebSocket `/ws` (JSON text frames)
 
+Every frame in both directions is a JSON object with a `type`.
+
 **Client to server**
 
-| Message | Shape | Effect |
+| `type` | Fields | Effect |
 |---|---|---|
-| Update | `{"role": "user", "text": str, "temperature"?: number, "resample_fps"?: int}` | Applies the settings (clamped to range) and, if `text` is not empty, sets the prompt. |
-| Toggle source | `{"role": "user", "text": "toggle_stream"}` | Switches between the first sample video and the webcam, **for all clients**. `toggle_stream` is therefore a reserved prompt. |
+| `update` | `text`?: str, `temperature`?: number, `resample_fps`?: int | Settings for the next round (clamped to range); a non-empty `text` sets the prompt. |
+| `control` | `action`: `run` \| `pause` \| `step` \| `reset_budget` | Spend control; a refusal comes back as `error`. |
+| `set_agent` | `slot`: `A` \| `B`, `provider`, `model`?, `enabled`?: bool, `confirm`?: bool | Changes an agent from the next round. |
+| `list_models` | `provider`, `refresh`?: bool | Replies with `models`. |
+| `set_source` | `source_key`: `sample:1` \| `sample:2` \| `webcam`, `confirm`?: bool | Switches the source for all clients. |
 
-**Server to client:** one envelope, `{"type": ..., "text": str}`
+Sending webcam frames to a remote agent needs `confirm: true`; without it the server answers with an `error` that has
+`confirm: "webcam_remote"`, and the page asks.
 
-| `type` | Extra fields | Sent to | When |
-|---|---|---|---|
-| `vlm` | `delay`: seconds spent processing the clip | all clients | A model answer. |
-| `system` | none | sender | Acknowledges an update or a source toggle. |
-| `system` | `muted: true` | all clients | A clip was skipped because the model was busy. |
-| `error` | none | sender | A frame or setting was rejected. |
-| `error` | none | all clients | Inference or the capture source failed. The text names a kind of failure, the exception class and any HTTP status, never the exception message. |
+**Server to client**
+
+| `type` | Sent to | Content |
+|---|---|---|
+| `state` | the new client, then all clients on any change | Providers with availability and reason, both slots (provider, model, enabled, remote, where frames go), run state and budget, settings, current source and its error, selectable sources, price list date. |
+| `round` | all | Round and clip ids, source, start and end time, loop, prompt, frame times and thumbnails (JPEG data URLs). |
+| `result` | all | Round and clip ids, slot, `status` (`ok`, `error`, `timeout`, `skipped`), `stale`, text, `finish_reason`, `error{kind, message}`, metrics (latency, tokens, cost and its source, model, parameters sent). |
+| `round_end` | all | Round id and each slot's status. |
+| `models` | sender | A provider's model list, or the reason it failed. |
+| `system`, `error` | sender (capture errors: all) | `text`. Errors name a kind of failure, the exception class and any HTTP status, never the exception message. |
 
 ```mermaid
 sequenceDiagram
     participant B as Browser
     participant S as Server
-    participant M as Model worker
-    B->>S: update (prompt, temperature, resample_fps)
-    S-->>B: system (prompt changed, effective settings)
-    loop while the recorder runs
-        alt model idle
-            S->>M: clip
-            M-->>S: text
-            S-->>B: vlm (text, delay), to all clients
-        else model busy
-            S-->>B: system, muted (clip skipped), rate-limited
+    participant A as Agent A
+    participant C as Agent B
+    S-->>B: state (paused)
+    B->>S: control run
+    loop each clip while running (and allowed by pacing and budget)
+        S-->>B: round (moment, frames)
+        par
+            S->>A: request
+            A-->>S: result
+            S-->>B: result A
+        and
+            S->>C: same request
+            C-->>S: result
+            S-->>B: result B
         end
+        S-->>B: round_end, state
     end
 ```
 
@@ -229,8 +257,9 @@ retry; each call times out after 30 s (120 s for Ollama, where a cold model load
 | `VLM_ALLOWED_HOSTS` | empty | Comma-separated host names or IP addresses, without ports, that browsers use to reach the app, for example `192.168.1.20,mybox.local`. Added to `localhost`, `127.0.0.1` and `[::1]`, which are always allowed. `*.example.com` matches subdomains; a bare `*` is refused. Required when `VLM_HOST` is not loopback. It guards against DNS rebinding and is not authentication. |
 | `VLM_PORT` | `8000` | Port. |
 | `VLM_ATTN_IMPL` | `flash_attention_2` | Attention implementation passed to the model. No value has run on a GPU with the current pins; `sdpa` and `eager` ran only in the [CPU checks](#ml-stack-what-was-checked). |
-| `VLM_AGENT_A` | `demo` | The agent that answers: `demo` (no model) or `hf` (local VideoLLaMA3, needs `VLM_ENABLE_HF=1`). Other providers fail at startup with "not available in the app yet". An empty value counts as unset. |
-| `VLM_ENABLE_HF` | unset | `1` allows `VLM_AGENT_A=hf`, which downloads the model at a pinned revision and loads it at startup on a CUDA GPU. |
+| `VLM_AGENT_A`, `VLM_AGENT_B` | `demo`, `demo:frame-motion` | The agents at startup, as `provider` or `provider:model` (split at the first colon, so `ollama:llava:13b` works): `demo`, `openai`, `anthropic`, `ollama`, `compat` or `hf`. A missing key or URL stops the app at startup with a message. Both can be changed in the page. An empty value counts as unset. |
+| `VLM_ENABLE_HF` | unset | `1` makes `hf` (local VideoLLaMA3) available, which downloads the model at a pinned revision and loads it at startup on a CUDA GPU. It can fill one slot at a time; if loading fails, that slot starts with its demo agent and the page says why. |
+| `VLM_ALLOW_REMOTE_PAID` | unset | With a non-loopback `VLM_HOST`, remote (paid) agents are off unless this is `1`. |
 | `VLM_BACKEND` | removed | Replaced by the two variables above; if set, the app stops at startup and names them. |
 | `OPENAI_API_KEY` | unset | Key for `openai`. Sent only to `https://api.openai.com/v1`, never to another URL. |
 | `ANTHROPIC_API_KEY` | unset | Key for `anthropic` (native Messages API). Sent only to `https://api.anthropic.com`. |
@@ -246,12 +275,12 @@ failure, the exception class, any HTTP status and the stack, not the exception m
 that fails to load at startup, are logged with their message. The values of `OPENAI_API_KEY`,
 `ANTHROPIC_API_KEY`, `VLM_COMPAT_API_KEY`, `HF_TOKEN` and `HUGGING_FACE_HUB_TOKEN`, if set and at least 8 characters
 long, are replaced with `[redacted]` in log text. Output that bypasses Python logging, such as messages from native
-libraries or the OpenTelemetry console exporter, is not filtered. The app itself does not select an API provider yet;
-the provider check below does.
+libraries or the OpenTelemetry console exporter, is not filtered. An unhandled error inside a route is answered with a
+plain HTTP 500 (WebSocket: close code 1011), so its text never reaches an OpenTelemetry span.
 
 ### Checking a provider
 
-The API adapters exist as a library and can be tried from the command line before the app can select them:
+Each API adapter can be tried from the command line, one call, without the app:
 
 ```bash
 python -m utils.providers.check openai --list                # the models the provider offers
@@ -292,8 +321,10 @@ Measured by the author on Ubuntu + RTX 4090 (24 GB), with the university version
 - **Not run on a GPU** since the overhaul, which changed the model wrapper and the setup script, or since the ML pin
   upgrade or the switch to the `decord` video path. Loading the real weights and generating real answers are untested.
 - **Localhost only:** there is no authentication, and settings and source are shared by all connected clients.
-- **Answers lag the video:** an answer is about a half-second moment that has passed on screen by the time it arrives,
-  and the page does not say which one.
+- **Answers lag the video:** an answer is about a half-second moment that has passed on screen by the time it arrives;
+  the card says which moment.
+- **API agents are unit-tested only:** no OpenAI, Anthropic, Ollama or compatible server has answered a real call from
+  this code yet. Costs are estimates from a vendored list-price snapshot.
 - **Capture is tested with fake and generated video only:** not with a real webcam, and not by watching the preview in a
   browser. The capture error message is sent once, so a page opened later shows only the error image.
 - **No temporal memory:** each 0.5 s clip is answered on its own. Output arrives as a whole message, not token by token.
@@ -362,8 +393,8 @@ OTEL_ENABLED=1 OTEL_TRACES_EXPORTER=otlp OTEL_METRICS_EXPORTER=otlp \
 | Span | `vlm.inference` | One per processed clip: agent (`provider:model`), FPS, max frames, temperature; on failure, error status and exception type (no message or stack trace). |
 | Histogram | `vlm.inference.duration` | Seconds, by agent and outcome. |
 | Counter | `vlm.inference.errors` | By agent. |
-| Counter | `vlm.clips.dropped` | Clips skipped while inference was busy. |
-| Counter | `ws.messages` | Parsed client messages, by role. |
+| Counter | `vlm.clips.dropped` | Clips skipped while a round was running. |
+| Counter | `ws.messages` | Client messages, by `type` (unknown ones as `other`). |
 | Up/down counter | `ws.connections` | Active WebSocket connections. |
 | FastAPI instrumentation | HTTP spans and metrics | `/video_feed` and per-message WebSocket spans are excluded. |
 
@@ -374,18 +405,17 @@ once against `grafana/otel-lgtm:0.41.1` on 2026-11-26 with a mocked backend, ove
 ## Roadmap: compare two models
 
 The goal for the first release: pick two models, play a video, and compare what they say about the same moment, and what
-it costs. **Only the first two rows have started:** the app runs one agent, chosen at startup: the demo agent (no model,
-the default) or the local model.
+it costs. **Done and tested with the demo agents and fake API clients**, not yet with a real provider:
 
-| Planned | What it means |
+| Planned | Status |
 |---|---|
-| Run without a GPU | A base install that starts with built-in demo agents (no model); the local VideoLLaMA3 becomes optional. **Done for one agent:** `pip install .` runs the app with the demo agent. |
-| Your own models | OpenAI, Anthropic, Ollama or any OpenAI-compatible URL. Keys and URLs come from environment variables. **Started:** the adapters exist and can be tried with the [provider check](#checking-a-provider); the app cannot select them yet. |
-| Model selection | Choose each agent's provider and model in the UI while the app runs. |
-| Side-by-side view | Video in the middle, one agent on each side. Both get the same sampled frames, and the page shows them. |
-| Metrics | Latency, tokens and estimated cost per answer (or "n/a" when unknown), in a panel you can hide. |
-| Cost control | Analysis starts paused; run, pause, single step, and limits on rounds and estimated spend. |
-| Your own video | Local `.mp4` / `.webm` files besides the samples and the server webcam. |
+| Run without a GPU | Done: `pip install .` starts with two built-in demo agents (no model); the local VideoLLaMA3 is optional. |
+| Your own models | OpenAI, Anthropic, Ollama or any OpenAI-compatible URL, keys and URLs from environment variables. Selectable in the page; **not run against a real provider yet**. |
+| Model selection | Done: provider and model per agent in the page, while the app runs. |
+| Side-by-side view | Done: video in the middle, one agent on each side, the frames both received above the prompt. |
+| Metrics | Done: latency, tokens and estimated cost per answer and per session, in blocks you can hide. |
+| Cost control | Done: starts paused; run, pause, single step, pacing and limits on rounds and estimated spend. |
+| Your own video | Planned: local `.mp4` / `.webm` files besides the samples and the server webcam. |
 
 Design choices behind the plan:
 
@@ -393,12 +423,6 @@ Design choices behind the plan:
   a router offers, and two SDKs add far fewer dependencies.
 - **Frames, not video files,** go to remote models: it is the input form these APIs have in common.
 - **Remote models are opt-in.** Using one sends frames of your video to that provider and may cost money.
-
-Already in place to build on: the agent contract with the demo and local agents, the API adapters and the price
-snapshot (`utils/providers/`, `utils/prices.json`), and optional OpenTelemetry (see
-[Observability](#observability-opentelemetry)). Built and unit-tested with fake agents, but **not connected to the app
-yet**: the two agent slots with each provider's availability (`utils/providers/registry.py`), rounds that send the same
-frames to both agents (`utils/rounds.py`) and the run/pause/step controls with their limits (`utils/spend.py`).
 
 ## Tools
 
