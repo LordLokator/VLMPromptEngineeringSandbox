@@ -118,7 +118,7 @@ def test_page_has_no_unprotected_external_assets():
 
 def test_state_frames_keep_unapplied_agent_picks():
     slot = function_body("renderSlot")
-    assert "card.dirty ? select.value" in slot and "if (!card.dirty) r(\"model\").value" in slot
+    assert "card.dirty ? select.value" in slot and 'if (!card.dirty) {\n        r("model").value' in slot
     assert "card.dirty = true" in JS and "card.dirty = false" in JS
 
 
@@ -129,3 +129,13 @@ def test_source_picker_sends_only_server_issued_keys():
     assert 'send({ type: "set_source", source_key: $("sourceSelect").value });' in JS
     assert 'id="sourceRescanBtn"' in HTML
     assert '$("sourceRescanBtn").onclick = () => send({ type: "list_sources" });' in JS
+
+
+def test_models_are_a_dropdown_listed_without_a_click():
+    # Listing is free (no generation): it runs on the first state frame and on each provider change.
+    assert "<datalist" not in HTML and 'data-role="modelPick"' in HTML
+    assert 'listModels(card, role("provider").value, false)' in JS
+    assert "if (card.listedFor === null) listModels(card, info.provider, false)" in function_body("renderSlot")
+    pick = function_body("syncModelPick")
+    assert "OTHER_MODEL" in pick and "input.hidden" in pick  # unlisted ids can still be typed
+    assert 'const OTHER_MODEL = "(other)"' in JS  # not a valid model id (utils/providers/settings.py)
