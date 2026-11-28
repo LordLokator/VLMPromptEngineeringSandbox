@@ -4,7 +4,8 @@ build-backend = "setuptools.build_meta"
 
 # Single committed reference for dependencies and setup; there is no requirements or lock file.
 # Install from a checkout, inside a virtual environment:
-#   pip install .              the whole app without a GPU: demo agent (and API providers, once they are selectable)
+#   pip install .              the whole app without a GPU: demo agent; API providers only through
+#                              python -m utils.providers.check until the app can select them
 #   pip install ".[gpu]"       adds the local model (setup.sh does this, then adds flash-attn)
 #   pip install ".[otel]"      optional OpenTelemetry export
 #   pip install ".[dev]"       tests and lint without a GPU
@@ -28,7 +29,8 @@ requires-python = ">=3.11"
 # OpenCV is the headless build for every install: it and opencv-python both provide cv2, so never install both.
 # The pinned VideoLLaMA3 remote code (processing_videollama3.py at MODEL_REVISION) uses only cv2.imread and
 # cv2.cvtColor, which the headless build has (read 2026-11-28, not run with it).
-# The SDKs are exact pins: the newest release at least 7 days old with no OSV record (checked 2026-11-28).
+# The SDKs are exact pins: the newest release at least 7 days old with no OSV record (checked 2026-11-28;
+# both released 2026-11-20).
 dependencies = [
     "fastapi",
     "starlette>=1.7.0",   # TrustedHostMiddleware handles [::1] from 1.7.0 (release notes, 2026-11-27)
