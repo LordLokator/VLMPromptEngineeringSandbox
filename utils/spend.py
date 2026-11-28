@@ -1,6 +1,6 @@
 """Spend control: Run / Pause / Step, pacing, the budget and the auto-pause rules (design: spend-protocol).
 
-Not wired into the app yet (T87). The app starts paused. Run, Pause and Step always apply; pacing and the budget
+The app starts paused. Run, Pause and Step always apply; pacing and the budget
 only for rounds with a remote agent (the locality rule: remote means paid). One budget: `max_rounds` rounds and
 `max_usd` of priced calls, whichever comes first. Run resumes what is left, Step uses it, and only `reset_budget`
 refills it. A round already running may overshoot a cap.

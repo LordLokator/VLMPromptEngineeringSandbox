@@ -1,7 +1,7 @@
-"""Which agent the app runs, from the environment (VLM_AGENT_A; VLM_ENABLE_HF=1 allows the local model).
+"""Which agents the app runs, from the environment (VLM_AGENT_A / VLM_AGENT_B; VLM_ENABLE_HF=1 allows the local model).
 
-An empty variable counts as unset. Only `demo` and `hf` run in the app so far: the API providers become selectable
-once spend control is in place.
+An empty variable counts as unset. The app accepts every provider (main.py passes PROVIDERS); `APP_PROVIDERS` and
+`build_agent` are the narrower default used by the GPU-free import check.
 """
 import os
 from dataclasses import dataclass

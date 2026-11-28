@@ -4,8 +4,7 @@ build-backend = "setuptools.build_meta"
 
 # Single committed reference for dependencies and setup; there is no requirements or lock file.
 # Install from a checkout, inside a virtual environment:
-#   pip install .              the whole app without a GPU: demo agent; API providers only through
-#                              python -m utils.providers.check until the app can select them
+#   pip install .              the whole app without a GPU: demo agents and the API providers
 #   pip install ".[gpu]"       adds the local model (setup.sh does this, then adds flash-attn)
 #   pip install ".[otel]"      optional OpenTelemetry export
 #   pip install ".[dev]"       tests and lint without a GPU
@@ -21,7 +20,7 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "vlm-prompt-engineering-sandbox"
 version = "0.1.0"
-description = "Web UI for live prompt editing against video-capable models on short video clips."
+description = "Compare two vision models live on the same moments of a video: answers, latency, tokens and cost."
 readme = "README.md"
 license = "MIT"
 requires-python = ">=3.11"
