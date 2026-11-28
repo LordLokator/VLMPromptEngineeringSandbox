@@ -41,7 +41,8 @@
 - **Failure behaviour:** inference errors appear in the chat, the browser reconnects with backoff (1 s to 10 s), and clips
   skipped while the model is busy are reported (at most one notice per 5 s).
 - **Demo agent:** with no model configured, a demo agent answers with facts measured on the frames it received (count,
-  size, brightness, change between frames). It is not a model; it lets the app run anywhere.
+  size, brightness, change between frames). It is not a model; it lets the app run anywhere. A second variant,
+  `demo:frame-motion`, says when and where the picture changes most.
 - **Optional OpenTelemetry** traces and metrics, off by default.
 
 ## Quick start
@@ -395,7 +396,9 @@ Design choices behind the plan:
 
 Already in place to build on: the agent contract with the demo and local agents, the API adapters and the price
 snapshot (`utils/providers/`, `utils/prices.json`), and optional OpenTelemetry (see
-[Observability](#observability-opentelemetry)).
+[Observability](#observability-opentelemetry)). Built and unit-tested with fake agents, but **not connected to the app
+yet**: the two agent slots with each provider's availability (`utils/providers/registry.py`), rounds that send the same
+frames to both agents (`utils/rounds.py`) and the run/pause/step controls with their limits (`utils/spend.py`).
 
 ## Tools
 
@@ -410,8 +413,10 @@ snapshot (`utils/providers/`, `utils/prices.json`), and optional OpenTelemetry (
 
 ## Development
 
-No GPU needed: the model is mocked in tests. Tests under `tests/manual/` need a real device or file and are skipped
-unless `VLM_MANUAL_TESTS=1`; their docstring says what they use.
+No GPU needed: the model is mocked in tests, and agents are faked (`tests/fake_agents.py`). One test starts the real
+`python main.py` with the demo agent on a free loopback port and waits for an answer over `/ws`. Tests under
+`tests/manual/` need a real device or file and are skipped unless `VLM_MANUAL_TESTS=1`; their docstring says what they
+use.
 
 ```bash
 pip install ".[dev]"
@@ -431,7 +436,7 @@ Unpinned and transitive versions are whatever resolves on that run; they are not
 
 ```
 main.py, web_engine.py   wiring and shutdown; HTTP and /ws
-utils/                   agents (providers/), VLM wrapper, telemetry, presets, file helpers
+utils/                   agents (providers/), rounds and spend control, VLM wrapper, telemetry, presets, file helpers
 video_handling/          capture, clip recording, streaming
 prompting/               prompt state, runtime settings, history
 src/                     frontend

@@ -80,6 +80,7 @@ dev = [
     "httpx",                  # required by Starlette's TestClient
     "pyyaml",                 # tests/test_workflows.py: workflow/dependabot structure test
     "opentelemetry-sdk",      # tests/test_telemetry.py: in-memory span/metric exporters
+    "websockets",             # tests/test_e2e_main.py: sync WebSocket client; uvicorn[standard] constrains the version
 ]
 
 # Not a library: the extras above are the point, so install no packages from this repo.

@@ -10,7 +10,7 @@ import pytest
 
 from utils.providers import GenerateRequest
 from utils.providers.agents import AgentConfigError, AgentSpec, agent_spec_from_env, build_agent, parse_agent
-from utils.providers.demo import DemoProvider
+from utils.providers.demo import DEMO_MODELS, DemoProvider
 from utils.providers.hf import HF_MODEL, HFProvider
 
 AGENT_ENV = ("VLM_AGENT_A", "VLM_BACKEND", "VLM_ENABLE_HF")
@@ -52,6 +52,38 @@ def test_demo_reports_facts_about_the_frames_it_got():
     assert result.latency_ms >= 0
 
 
+def moving_square(x):
+    import cv2
+    import numpy as np
+
+    image = np.zeros((48, 64, 3), np.uint8)
+    image[:16, x:x + 16] = 255
+    return cv2.imencode(".jpg", image)[1].tobytes()
+
+
+def test_motion_demo_says_when_and_where_the_picture_changes():
+    frames = (moving_square(0), moving_square(0), moving_square(8))  # the square moves, top left
+    result = DemoProvider("frame-motion").generate(request(frames=frames, frame_times=(1.0, 1.1, 1.2)))
+    assert result.text.startswith("Demo (no model), motion: 3 frames, 1.00-1.20 s; largest change 1.10-1.20 s")
+    assert "most change in the top left" in result.text
+    assert (result.input_tokens, result.output_tokens, result.cost_usd, result.cost_source) == (None,) * 4
+    assert result.requested_model == "frame-motion"
+
+
+def test_two_demo_variants_never_say_the_same():
+    frames, times = (moving_square(0), moving_square(8)), (0.0, 0.1)
+    texts = {DemoProvider(m).generate(request(frames=frames, frame_times=times)).text for m in DEMO_MODELS}
+    assert len(texts) == len(DEMO_MODELS) == 2
+
+
+def test_motion_demo_edge_cases():
+    motion = DemoProvider("frame-motion")
+    assert "one frame only" in motion.generate(request(frames=(moving_square(0),), frame_times=(0.0,))).text
+    still = request(frames=(moving_square(0),) * 2, frame_times=(0.0, 0.1))
+    assert "no change at all" in motion.generate(still).text
+    assert "no readable frames" in motion.generate(request(frames=(b"not a jpeg",))).text
+
+
 def test_demo_without_readable_frames_says_so():
     assert "no readable frames" in DemoProvider().generate(request(frames=(b"not a jpeg",))).text
     assert "no readable frames" in DemoProvider().generate(request()).text
@@ -60,7 +92,7 @@ def test_demo_without_readable_frames_says_so():
 def test_demo_label_and_models():
     demo = DemoProvider()
     assert demo.label == "demo:frame-facts"
-    assert [m.id for m in demo.list_models()] == ["frame-facts"]
+    assert [m.id for m in demo.list_models()] == ["frame-facts", "frame-motion"]
     with pytest.raises(ValueError):
         DemoProvider("gpt-9")
 
@@ -188,3 +220,8 @@ def test_one_cv2_check():
     assert cv2_distributions(report("numpy", "opencv-python-headless")) == ["opencv-python-headless"]
     assert len(cv2_distributions(report("opencv_python", "opencv-python-headless"))) == 2
     assert cv2_distributions(report("numpy")) == []
+
+
+def test_agent_b_defaults_to_the_second_demo_variant(monkeypatch):
+    monkeypatch.delenv("VLM_AGENT_B", raising=False)
+    assert agent_spec_from_env("B") == AgentSpec("demo", "frame-motion")

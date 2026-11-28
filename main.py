@@ -14,9 +14,10 @@ from prompting.prompting import Prompt, RuntimeSettings
 from utils import telemetry
 from utils.errors import log_failure
 from utils.logging_setup import configure_logging, route_stdlib_logging
-from utils.providers import SYSTEM_PROMPT, GenerateRequest, Provider
+from utils.providers import GenerateRequest, Provider
 from utils.providers.agents import AgentConfigError, agent_spec_from_env, build_agent
 from utils.providers.settings import load_env_file
+from utils.rounds import RoundSettings, request_for
 from web_engine import start_server_threaded, broadcast_sync, emit
 from video_handling.clip_handling import ClipRecorder, ClipSample
 from video_handling.streaming import CaptureHub
@@ -30,17 +31,7 @@ def build_request(
     clip: ClipSample, *, prompt: str, temperature: float, fps: int, max_frames: int, clip_fps: int = FPS
 ) -> GenerateRequest:
     """One round's request. Every agent gets the same one, so API agents get byte-identical frames."""
-    frames, times = clip.frames_at(fps, clip_fps)
-    return GenerateRequest(
-        frames=frames,
-        frame_times=times,
-        system=SYSTEM_PROMPT,
-        prompt=prompt,
-        temperature=temperature,
-        video_path=clip.video_path,
-        fps=fps,
-        max_frames=max_frames,
-    )
+    return request_for(clip, RoundSettings(prompt, temperature, fps, clip_fps, max_frames))
 
 
 def process_clip(

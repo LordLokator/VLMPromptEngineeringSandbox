@@ -4,40 +4,12 @@ from concurrent.futures import ThreadPoolExecutor
 import pytest
 
 from main import make_clip_handler, process_clip
-from utils.providers import Result
 from video_handling.clip_handling import ClipSample
 from video_handling.streaming import CaptureHub
 
 
 def sample(path="c.mp4", epoch=0):
     return ClipSample(0, "sample:1", epoch, "Sample 1", 0.0, 0.5, 0, str(path))
-
-
-def result(text):
-    return Result(text, "stop", "m", "m", None, None, None, None, 1.0, None, None)
-
-
-class FakeVLM:
-    """A provider that records the requests it gets."""
-
-    provider, model, label = "demo", "m", "demo:m"
-
-    def __init__(self, fail=False):
-        self.fail = fail
-        self.requests = []
-
-    @property
-    def temps(self):
-        return [r.temperature for r in self.requests]
-
-    def list_models(self):
-        return []
-
-    def generate(self, request):
-        self.requests.append(request)
-        if self.fail:
-            raise RuntimeError("boom")
-        return result("a car")
 
 
 def run(vlm, temp=0.5, clip="c.mp4", fps=10, epoch=lambda: 0, prompt="what happens?"):
@@ -49,48 +21,45 @@ def run(vlm, temp=0.5, clip="c.mp4", fps=10, epoch=lambda: 0, prompt="what happe
     return sent
 
 
-def test_ok_message():
-    (msg,) = run(FakeVLM())
+def test_ok_message(make_agent):
+    (msg,) = run(make_agent(replies=["a car"]))
     assert msg["type"] == "vlm"
     assert msg["text"] == "a car"
     assert msg["delay"] >= 0
 
 
 @pytest.mark.parametrize("fail", [False, True], ids=["answer", "error"])
-def test_a_slow_result_after_a_switch_is_dropped(tmp_path, fail):
+def test_a_slow_result_after_a_switch_is_dropped(tmp_path, make_agent, fail):
     hub = CaptureHub()  # never started
     clip = tmp_path / "c.mp4"
     clip.write_bytes(b"x")
-
-    class SwitchedWhileThinking(FakeVLM):
-        def generate(self, request):
-            hub.select("sample:2")
-            return super().generate(request)
-
-    assert run(SwitchedWhileThinking(fail=fail), clip=clip, epoch=lambda: hub.spec.source_epoch) == []
+    # The source changes while the agent is "thinking" (its delay).
+    failure = {1: RuntimeError("boom")} if fail else None
+    agent = make_agent(delay=1, sleep=lambda _s: hub.select("sample:2"), raise_on=failure)
+    assert run(agent, clip=clip, epoch=lambda: hub.spec.source_epoch) == []
     assert not clip.exists()
 
 
-def test_a_clip_from_before_a_switch_and_back_is_still_stale():
+def test_a_clip_from_before_a_switch_and_back_is_still_stale(make_agent):
     hub = CaptureHub()
     hub.select("sample:2")
     hub.select("sample:1")  # the same source again, but a later epoch
-    assert run(FakeVLM(), epoch=lambda: hub.spec.source_epoch) == []
+    assert run(make_agent(), epoch=lambda: hub.spec.source_epoch) == []
 
 
-def test_error_message():
-    (msg,) = run(FakeVLM(fail=True))
+def test_error_message(make_agent):
+    (msg,) = run(make_agent(raise_on={1: RuntimeError("boom")}))
     assert msg == {"type": "error", "text": "Failed to process: Internal error (RuntimeError)"}
 
 
-def test_temperature_getter_is_used():
-    vlm = FakeVLM()
+def test_temperature_getter_is_used(make_agent):
+    vlm = make_agent()
     run(vlm, temp=0.7)
-    assert vlm.temps == [0.7]
+    assert [r.temperature for r in vlm.requests] == [0.7]
 
 
-def test_request_carries_the_round_settings_and_the_clip():
-    vlm = FakeVLM()
+def test_request_carries_the_round_settings_and_the_clip(make_agent):
+    vlm = make_agent()
     frames, times = (b"jpeg-1", b"jpeg-2"), (1.0, 1.1)
     clip = ClipSample(0, "sample:1", 0, "Sample 1", 1.0, 1.2, 0, "c.mp4", frames, times)
     process_clip(
@@ -103,7 +72,7 @@ def test_request_carries_the_round_settings_and_the_clip():
     assert request.system
 
 
-def test_two_agents_get_byte_identical_frames():
+def test_two_agents_get_byte_identical_frames(make_agent):
     import cv2
     import numpy as np
 
@@ -113,7 +82,7 @@ def test_two_agents_get_byte_identical_frames():
     rng = np.random.default_rng(0)
     jpegs = tuple(encode_jpeg(rng.integers(0, 255, (1080, 1920, 3), dtype=np.uint8)) for _ in range(5))
     clip = ClipSample(0, "sample:1", 0, "Sample 1", 0.0, 0.5, 0, "c.mp4", jpegs, (0.0, 0.1, 0.2, 0.3, 0.4))
-    agents = (FakeVLM(), FakeVLM())
+    agents = (make_agent(model="a"), make_agent(model="b"))
     for agent in agents:
         agent.generate(build_request(clip, prompt="p", temperature=0.2, fps=3, max_frames=20))
     a, b = (agent.requests[0] for agent in agents)
@@ -121,11 +90,11 @@ def test_two_agents_get_byte_identical_frames():
     assert [cv2.imdecode(np.frombuffer(f, np.uint8), cv2.IMREAD_COLOR).shape[:2] for f in a.frames] == [(432, 768)] * 2
 
 
-def test_clip_deleted_after_ok_and_error(tmp_path):
+def test_clip_deleted_after_ok_and_error(tmp_path, make_agent):
     for fail in (False, True):
         clip = tmp_path / f"c{fail}.mp4"
         clip.write_bytes(b"x")
-        run(FakeVLM(fail=fail), clip=clip)
+        run(make_agent(raise_on={1: RuntimeError("boom")} if fail else None), clip=clip)
         assert not clip.exists()
 
 
@@ -229,7 +198,7 @@ def test_shutdown_gives_up_on_stuck_inference():
     assert srv.should_exit is True
 
 
-def test_signal_during_backend_load_exits_cleanly(monkeypatch):
+def test_signal_during_backend_load_exits_cleanly(monkeypatch, make_agent):
     """Handlers are installed before the slow load; a signal then skips the recorder and still shuts down.
 
     The capture is already running at that point: it does not wait for a backend.
@@ -267,7 +236,7 @@ def test_signal_during_backend_load_exits_cleanly(monkeypatch):
     def slow_load(_spec):
         events.append("load")
         handlers[signal.SIGINT](signal.SIGINT, None)  # Ctrl+C while the model "loads"
-        return FakeVLM()
+        return make_agent()
 
     server = Server()
     monkeypatch.setattr(app_main, "configure_logging", lambda: None)  # would replace global hooks

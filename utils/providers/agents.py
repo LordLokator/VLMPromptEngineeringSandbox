@@ -12,6 +12,8 @@ from utils.providers.settings import ProviderConfigError, check_model_id
 ENABLE_HF_ENV = "VLM_ENABLE_HF"
 REMOVED_BACKEND_ENV = "VLM_BACKEND"
 APP_PROVIDERS = ("demo", "hf")
+# Agent B's default is the second demo variant, so two demo slots never show the same text.
+DEFAULT_AGENTS = {"A": "demo", "B": "demo:frame-motion"}
 
 
 class AgentConfigError(ValueError):
@@ -49,18 +51,21 @@ def parse_agent(value: str) -> AgentSpec:
     return AgentSpec(provider, model or None)
 
 
-def agent_spec_from_env(slot: str = "A") -> AgentSpec:
-    """Check the settings for one agent slot; raises AgentConfigError with a message for the user."""
+def agent_spec_from_env(slot: str = "A", providers: tuple[str, ...] = APP_PROVIDERS) -> AgentSpec:
+    """Check the settings for one agent slot; raises AgentConfigError with a message for the user.
+
+    `providers` are the ones accepted (the app's list by default; the registry passes all of them).
+    """
     if _env(REMOVED_BACKEND_ENV):
         raise AgentConfigError(
             f"{REMOVED_BACKEND_ENV} was removed. Use VLM_AGENT_A=demo (the default) or VLM_AGENT_A=hf with "
             f"{ENABLE_HF_ENV}=1 for the local model."
         )
     name = f"VLM_AGENT_{slot}"
-    spec = parse_agent(_env(name) or "demo")
-    if spec.provider not in APP_PROVIDERS:
+    spec = parse_agent(_env(name) or DEFAULT_AGENTS[slot])
+    if spec.provider not in providers:
         raise AgentConfigError(
-            f"{name}={spec.text}: {spec.provider} is not available in the app yet (only {', '.join(APP_PROVIDERS)})."
+            f"{name}={spec.text}: {spec.provider} is not available in the app yet (only {', '.join(providers)})."
         )
     if spec.provider == "hf" and _env(ENABLE_HF_ENV) != "1":
         raise AgentConfigError(
@@ -69,8 +74,8 @@ def agent_spec_from_env(slot: str = "A") -> AgentSpec:
     from utils.providers.demo import DEMO_MODELS
     from utils.providers.hf import HF_MODEL
 
-    known = {"demo": DEMO_MODELS, "hf": (HF_MODEL,)}[spec.provider]
-    if spec.model is not None and spec.model not in known:
+    known = {"demo": DEMO_MODELS, "hf": (HF_MODEL,)}.get(spec.provider)
+    if known is not None and spec.model is not None and spec.model not in known:
         raise AgentConfigError(f"{name}={spec.text}: unknown model; {spec.provider} has {', '.join(known)}")
     return spec
 

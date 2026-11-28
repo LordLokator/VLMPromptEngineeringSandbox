@@ -34,7 +34,7 @@ def test_demo_call_prints_the_result(capsys):
 
 def test_list(capsys):
     assert check.main(["demo", "--list"]) == 0
-    assert capsys.readouterr().out == "frame-facts\tvision\n"
+    assert capsys.readouterr().out == "frame-facts\tvision\nframe-motion\tvision\n"
 
 
 def test_missing_key_is_a_config_error(capsys):
