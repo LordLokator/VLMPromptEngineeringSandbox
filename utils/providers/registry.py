@@ -164,7 +164,8 @@ class AgentRegistry:
         return slots
 
     def check_spec(self, spec: AgentSpec) -> None:
-        """What can be checked before anything starts: the provider's key or URL and the remote-bind block.
+        """What can be checked before anything starts: the provider's key or URL, the remote-bind block, and that the
+        provider can be built (a bad URL or a missing model id), without calling it.
 
         hf is checked when it loads. Raises AgentConfigError.
         """
@@ -175,6 +176,10 @@ class AgentRegistry:
             raise AgentConfigError(available.reason or f"{spec.provider} is not available")
         if self.remote_paid_blocked and spec.model and not is_local(spec.provider, spec.model):
             raise AgentConfigError(PAID_BLOCKED)
+        try:
+            self._build(spec)
+        except (ProviderConfigError, ValueError) as e:
+            raise AgentConfigError(str(e)) from e
 
     def _fill(self, slot: str, spec: AgentSpec, enabled: bool) -> Slot:
         available = self.availability(spec.provider)

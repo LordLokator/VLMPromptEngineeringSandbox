@@ -18,11 +18,16 @@ from utils import telemetry
 from utils.errors import log_failure
 from utils.session import CLIENT_TYPES, message
 from utils.hosts import LOOPBACK_HOSTS, parse_allowed_hosts, require_extra_hosts
+from utils.config import DEFAULT_PORT, ConfigError, parse_port
 from utils.file_management import BASE_DIR
 from video_handling.streaming import mjpeg_stream
 
-HOST: str = os.environ.get("VLM_HOST", "127.0.0.1")
-PORT: int = int(os.environ.get("VLM_PORT", "8000"))
+# Read at import: main.py loads .env before importing this module. An empty variable counts as unset.
+HOST: str = os.environ.get("VLM_HOST", "").strip() or "127.0.0.1"
+try:
+    PORT: int = parse_port(os.environ.get("VLM_PORT", ""))
+except ConfigError:
+    PORT = DEFAULT_PORT  # never served: main.py's startup check reports the bad value with the others and stops
 IS_LOOPBACK: bool = HOST in ("127.0.0.1", "localhost", "::1")
 # Names served besides the loopback ones. A bad value stops the app at import, before anything starts.
 EXTRA_HOSTS: list[str] = parse_allowed_hosts(os.environ.get("VLM_ALLOWED_HOSTS", ""))

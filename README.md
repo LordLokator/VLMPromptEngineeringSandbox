@@ -127,6 +127,13 @@ All settings are environment variables, all optional. A git-ignored `.env` in th
 (and by the provider check); a variable set in the real environment wins, even when empty. An empty variable counts as
 unset.
 
+**Fail fast:** every setting is checked before the server starts. An invalid one stops the app with exit code 2 and
+one line per problem, naming the variable and never its value. That includes a `.env` line that cannot be parsed or
+has no `=`, an unknown `VLM_*` name (a typo), an on/off flag that is not `1` or `0`, a bad port, host, URL,
+`VLM_ATTN_IMPL` or OTel exporter, `OTEL_ENABLED=1` without the `otel` extra, and an agent whose key or URL is missing
+or that cannot be built. Not checked at startup: whether a key is accepted or a model id exists (that needs a paid
+call); the first round shows such errors.
+
 **Agents and providers**
 
 | Variable | Default | Meaning |

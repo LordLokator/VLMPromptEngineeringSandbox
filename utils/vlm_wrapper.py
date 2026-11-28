@@ -18,7 +18,7 @@ MODEL_PATH = "DAMO-NLP-SG/VideoLLaMA3-7B"
 MODEL_REVISION = "d5b763e368861e7f5096e7ff1b49f92fbccf8ae6"
 DEVICE = "cuda:0"
 # Override e.g. on pre-Ampere GPUs or without flash-attn installed.
-ATTN_IMPL = os.environ.get("VLM_ATTN_IMPL", "flash_attention_2")
+ATTN_IMPL = os.environ.get("VLM_ATTN_IMPL", "").strip() or "flash_attention_2"  # checked in utils/config.py
 # load_video (processing_videollama3.py at MODEL_REVISION) decodes with decord only when start_time and end_time are
 # given and less than this many seconds apart. Otherwise it runs system ffmpeg, whose fps filter returned no frames
 # for 0.5 s clips at 1 fps.
