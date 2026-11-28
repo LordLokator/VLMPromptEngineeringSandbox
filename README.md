@@ -28,7 +28,14 @@ OPENAI_API_KEY=sk-... ANTHROPIC_API_KEY=sk-ant-... \
 VLM_AGENT_A=openai:gpt-5.4-mini VLM_AGENT_B=anthropic:claude-haiku-5-5 python main.py
 ```
 
-The model names are examples: the card lists what your provider offers, and free text always works.
+The model names are examples: the card lists what your provider offers, and free text always works. Both slots may
+use the same provider and key, for example `anthropic:claude-haiku-5-5` against `anthropic:claude-sonnet-5-5`; only
+`hf` is limited to one slot.
+
+An Anthropic key comes from the [Claude Console](https://platform.claude.com/docs/en/get-api-key). API calls are
+[paid with Console credits](https://support.claude.com/en/articles/8977456-how-do-i-pay-for-my-claude-api-usage),
+separate from a Claude.ai subscription; Max, Ultra and Team plans
+[include monthly API credits](https://platform.claude.com/docs/en/about-claude/api-credits-for-subscribers).
 
 ## Providers
 
@@ -132,7 +139,9 @@ one line per problem, naming the variable and never its value. That includes a `
 has no `=`, an unknown `VLM_*` name (a typo), an on/off flag that is not `1` or `0`, a bad port, host, URL,
 `VLM_ATTN_IMPL` or OTel exporter, `OTEL_ENABLED=1` without the `otel` extra, and an agent whose key or URL is missing
 or that cannot be built. Not checked at startup: whether a key is accepted or a model id exists (that needs a paid
-call); the first round shows such errors.
+call); the first round shows such errors. One exception to the format: an invalid `VLM_ALLOWED_HOSTS` entry stops the
+app with exit code 1 and names that entry. If the local `hf` model fails to load, that is not a configuration error:
+its slot starts with the demo agent instead.
 
 **Agents and providers**
 
