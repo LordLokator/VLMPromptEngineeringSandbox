@@ -324,7 +324,8 @@ class CompareSession:
         key, confirm = msg.get("source_key"), msg.get("confirm", False)
         if not isinstance(key, str):
             raise _BadRequest("source_key must be a string")
-        self.hub.media.scan()  # a key from the last listing keeps its file; a deleted file is refused here
+        if self.hub.media.scan():  # a key from the last listing keeps its file; a deleted file is refused below
+            self.broadcast_state()
         with self._lock:
             if key == WEBCAM_KEY and self.registry.any_remote() and confirm is not True:
                 return [message("error", CONFIRM_WEBCAM, request="set_source", confirm="webcam_remote")]

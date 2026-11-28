@@ -64,9 +64,10 @@ class StubPrompt:
 
 
 @pytest.fixture
-def compare_app(monkeypatch, make_agent):
+def compare_app(monkeypatch, make_agent, tmp_path):
     """The web app with a real CompareSession: fake agents (A: demo:frame-facts, B: demo:frame-motion), a capture
-    hub that is never started, a stub prompt, and clip deletion recorded instead of done.
+    hub that is never started, a stub prompt, and clip deletion recorded instead of done. `compare_app.media` is an
+    empty media folder of its own (`compare_app.media.folder`), never the repository's `media/`.
 
     `compare_app.agents` maps "provider:model" to the fake agent built for it; `options` sets FakeAgent arguments
     for agents built from then on.
@@ -80,6 +81,7 @@ def compare_app(monkeypatch, make_agent):
     from utils.providers.registry import AgentRegistry
     from utils.session import CompareSession
     from utils.spend import SpendController
+    from video_handling.source import MediaLibrary
     from video_handling.streaming import CaptureHub
 
     for name in ("VLM_AGENT_A", "VLM_AGENT_B", "VLM_ENABLE_HF", "VLM_ALLOW_REMOTE_PAID", "OPENAI_API_KEY",
@@ -95,7 +97,9 @@ def compare_app(monkeypatch, make_agent):
     registry = AgentRegistry(build=build)
     registry.set_agent("A", "demo", "frame-facts")
     registry.set_agent("B", "demo", "frame-motion")
-    hub = CaptureHub()  # never started, so no source is opened
+    env.media = MediaLibrary(tmp_path / "media")
+    env.media.folder.mkdir()
+    hub = CaptureHub(media=env.media)  # never started, so no source is opened
     env.prompt, env.settings, env.hub, env.registry = StubPrompt(), RuntimeSettings(), hub, registry
     env.session = CompareSession(
         registry=registry, spend=SpendController(), hub=hub, prompt=env.prompt, settings=env.settings,

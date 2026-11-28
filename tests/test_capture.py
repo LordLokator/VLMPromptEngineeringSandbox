@@ -305,7 +305,10 @@ def wait_until(condition, timeout=5.0):
 
 @pytest.mark.parametrize(
     ("cap", "reason"),
-    [(ScriptCap([]), "no frame could be decoded"), (ScriptCap([], opened=False), "the file cannot be opened as a video")],
+    [
+        (ScriptCap([]), "no frame could be decoded"),
+        (ScriptCap([], opened=False), "the file cannot be opened as a video"),
+    ],
     ids=["no-frames", "cannot-open"],
 )
 def test_unusable_file_ends_in_an_error_and_does_not_spin(cap, reason):
