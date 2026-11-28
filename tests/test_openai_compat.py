@@ -277,10 +277,10 @@ def _non_null_handlers():
     return found
 
 
-@pytest.mark.parametrize("name, url_env, auth", [
+@pytest.mark.parametrize("kind, url_env, auth", [
     ("compat", "VLM_COMPAT_BASE_URL", "Bearer EMPTY"), ("ollama", "OLLAMA_BASE_URL", "Bearer ollama"),
 ])
-def test_wire_sends_nothing_meant_for_openai(monkeypatch, name, url_env, auth):
+def test_wire_sends_nothing_meant_for_openai(monkeypatch, kind, url_env, auth):
     from loguru import logger
 
     from utils.logging_setup import configure_logging
@@ -301,8 +301,8 @@ def test_wire_sends_nothing_meant_for_openai(monkeypatch, name, url_env, auth):
     try:
         with stub_server() as (base, recorder):
             recorder.route("POST", "/v1/chat/completions", CHAT_REPLY)
-            monkeypatch.setenv(url_env, base + ("/v1" if name == "compat" else ""))
-            result = build(name, "stub-model").generate(request())
+            monkeypatch.setenv(url_env, base + ("/v1" if kind == "compat" else ""))
+            result = build(kind, "stub-model").generate(request())
             handlers_after = _non_null_handlers()
     finally:
         logging.captureWarnings(False)
