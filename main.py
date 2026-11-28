@@ -15,6 +15,7 @@ from utils.session import CompareSession
 from utils.spend import SpendController
 from web_engine import IS_LOOPBACK, broadcast_sync, start_server_threaded
 from video_handling.clip_handling import ClipRecorder, ClipSample
+from video_handling.source import MEDIA
 from video_handling.streaming import CaptureHub
 
 FPS = 10
@@ -77,6 +78,8 @@ def main():
     settings = RuntimeSettings(clip_fps=FPS, clip_seconds=SEC)
     session: CompareSession | None = None
 
+    MEDIA.folder.mkdir(exist_ok=True)  # the user's own .mp4 / .webm files go here (git-ignored)
+    MEDIA.scan()
     # The only capture; the preview and the clip recorder both read from it. Not started yet.
     hub = CaptureHub(min_pass_s=SEC, on_error=lambda text: session.source_error(text) if session else None)
     session = CompareSession(

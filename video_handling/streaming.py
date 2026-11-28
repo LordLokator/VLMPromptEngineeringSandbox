@@ -1,4 +1,5 @@
 """One capture per source. A single thread decodes the selected source; the preview and the clipper share it."""
+import os
 import threading
 import time
 from collections.abc import Callable, Generator
@@ -12,7 +13,7 @@ from loguru import logger
 from utils.errors import DecodeError, log_failure
 from utils.file_management import BASE_DIR
 from video_handling.sampling import MediaTimer, Segment
-from video_handling.source import DEFAULT_KEY, WEBCAM_KEY, SourceSpec, make_spec
+from video_handling.source import DEFAULT_KEY, MEDIA, WEBCAM_KEY, MediaLibrary, SourceSpec, make_spec
 
 FALLBACK_IMAGE = str(BASE_DIR / "src" / "error.jpeg")
 PREVIEW_MAX_HEIGHT = 720
@@ -21,10 +22,19 @@ MAX_LAG_S = 1.0  # further behind than this, playback continues from now instead
 WEBCAM_RETRY_S = 0.05
 WEBCAM_TIMEOUT_S = 3.0  # this long without a readable frame is a source error
 WEBCAM_GAP_S = 1.0  # a longer pause between webcam frames starts a new segment
+MAX_FRAME_EDGES = (1920, 1080)  # long and short edge; larger files decode too slowly to play in real time
+MAX_FILE_BYTES = 1 << 30  # 1 GiB: a sample or media file above this is refused before it is opened
 
 
 class CaptureError(DecodeError, RuntimeError):
-    """A video source could not be opened or read."""
+    """A video source could not be opened or read.
+
+    `reason` is a fixed text that is safe to show (no path, no decoder output); the message itself is only logged.
+    """
+
+    def __init__(self, message: str, reason: str | None = None):
+        super().__init__(message)
+        self.reason = reason
 
 
 class FrameSink(Protocol):
@@ -50,6 +60,29 @@ def preview_jpeg(frame: MatLike) -> bytes:
     return jpeg.tobytes()
 
 
+def check_file_size(path: str, name: str) -> None:
+    """Raise a CaptureError if the file is gone or larger than MAX_FILE_BYTES."""
+    try:
+        size = os.stat(path).st_size
+    except OSError as e:
+        raise CaptureError(f"Video file not found: {name}", "the file is gone") from e
+    if size > MAX_FILE_BYTES:
+        raise CaptureError(f"Video file too large: {name}", f"the file is larger than {MAX_FILE_BYTES >> 20} MB")
+
+
+def check_frame_size(frame: MatLike, name: str) -> None:
+    """Raise a CaptureError if a frame is larger than MAX_FRAME_EDGES (either orientation)."""
+    shape = getattr(frame, "shape", None)  # test doubles hand out tokens, not arrays
+    if shape is None:
+        return
+    height, width = shape[:2]
+    if max(height, width) > MAX_FRAME_EDGES[0] or min(height, width) > MAX_FRAME_EDGES[1]:
+        raise CaptureError(
+            f"Video frames too large: {name} ({width}x{height})",
+            f"frames of {width}x{height} are larger than {MAX_FRAME_EDGES[0]}x{MAX_FRAME_EDGES[1]}",
+        )
+
+
 class CaptureHub:
     """Owns the only decoder. The selected source loops until another one is selected or it fails.
 
@@ -67,16 +100,18 @@ class CaptureHub:
         clock: Callable[[], float] = time.monotonic,
         wall_clock: Callable[[], float] = time.time,
         wait: Callable[[float], object] | None = None,
+        media: MediaLibrary | None = None,
     ):
         self.min_pass_s = min_pass_s  # a shorter file holds its last frame this long, so it still fills a clip
         self.on_error = on_error
         self._open_source = open_source
+        self.media = media if media is not None else MEDIA  # the folder `media:<n>` keys are looked up in
         self._clock = clock
         self._wall_clock = wall_clock
         self._wake = threading.Event()  # set by select() and stop(): cuts any wait short
         self._wait = wait or self._wake.wait
         self._cond = threading.Condition()  # guards the spec, the latest frame, the error and `stopped`
-        self._spec = make_spec(source_key, 0)
+        self._spec = make_spec(source_key, 0, self.media)
         self._frame: MatLike | None = None
         self._seq = 0
         self._error: str | None = None
@@ -103,7 +138,7 @@ class CaptureHub:
     def select(self, source_key: str) -> SourceSpec:
         """Switch sources (selecting the current one restarts it). Raises ValueError for an unknown key."""
         with self._cond:
-            self._spec = make_spec(source_key, self._spec.source_epoch + 1)
+            self._spec = make_spec(source_key, self._spec.source_epoch + 1, self.media)
             self._error = None
             spec = self._spec
             self._wake.set()
@@ -188,6 +223,8 @@ class CaptureHub:
 
     def _fail(self, spec: SourceSpec, e: Exception) -> None:
         message = f"Capture source failed: {log_failure('Capture source failed', e)}"
+        if isinstance(e, CaptureError) and e.reason:
+            message += f": {e.reason}"
         with self._cond:
             if not self._current(spec):
                 return
@@ -226,10 +263,11 @@ class CaptureHub:
         name = Path(spec.path or "").name  # no directories: they name the user and the install location
         loop = 0
         while self._current(spec):
+            check_file_size(spec.path or "", name)
             cap = self._open_source(spec)  # a new decoder per pass: seeking is not reliable in every container
             try:
                 if not cap.isOpened():
-                    raise CaptureError(f"Failed to open video: {name}")
+                    raise CaptureError(f"Failed to open video: {name}", "the file cannot be opened as a video")
                 self._play_pass(cap, Segment(spec, loop, loop, 0.0), name)
             finally:
                 cap.release()
@@ -245,6 +283,7 @@ class CaptureHub:
                 break
             t = timer.stamp(cap.get(cv2.CAP_PROP_POS_MSEC))
             if origin is None:
+                check_frame_size(frame, name)
                 origin = self._clock()  # after the first decode: opening takes time
             else:
                 last_step = t - last_t
@@ -256,7 +295,7 @@ class CaptureHub:
         if not self._current(segment.spec):
             return
         if origin is None:
-            raise CaptureError(f"Video yielded no frames: {name}")
+            raise CaptureError(f"Video yielded no frames: {name}", "no frame could be decoded")
         # The last frame stays on screen as long as the one before it did.
         end = max(last_t + last_step, self.min_pass_s)
         if self._pace(segment, origin, end) is not None:
@@ -266,7 +305,7 @@ class CaptureHub:
         cap = self._open_source(spec)
         try:
             if not cap.isOpened():
-                raise CaptureError("Webcam not found")
+                raise CaptureError("Webcam not found", "no webcam found on the server")
             segment: Segment | None = None
             origin = last_frame = 0.0
             failing_since: float | None = None
@@ -277,7 +316,7 @@ class CaptureHub:
                 if not ok:
                     failing_since = now if failing_since is None else failing_since
                     if now - failing_since >= WEBCAM_TIMEOUT_S:
-                        raise CaptureError("Webcam stopped delivering frames")
+                        raise CaptureError("Webcam stopped delivering frames", "the webcam stopped delivering frames")
                     self._wait(WEBCAM_RETRY_S)
                     continue
                 failing_since = None
