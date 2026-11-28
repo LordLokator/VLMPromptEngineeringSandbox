@@ -28,9 +28,9 @@ OPENAI_API_KEY=sk-... ANTHROPIC_API_KEY=sk-ant-... \
 VLM_AGENT_A=openai:gpt-5.4-mini VLM_AGENT_B=anthropic:claude-haiku-5-5 python main.py
 ```
 
-The model names are examples: the card lists what your provider offers, and free text always works. Both slots may
-use the same provider and key, for example `anthropic:claude-haiku-5-5` against `anthropic:claude-sonnet-5-5`; only
-`hf` is limited to one slot.
+The model names are examples: each card lists what your provider offers in a dropdown, and "Other (type an id)..."
+takes any id. Both slots may use the same provider and key, for example `anthropic:claude-haiku-5-5` against
+`anthropic:claude-sonnet-5-5`; only `hf` is limited to one slot.
 
 An Anthropic key comes from the [Claude Console](https://platform.claude.com/docs/en/get-api-key). API calls are
 [paid with Console credits](https://support.claude.com/en/articles/8977456-how-do-i-pay-for-my-claude-api-usage),
@@ -43,14 +43,14 @@ separate from a Claude.ai subscription; Max, Ultra and Team plans
 |---|---|---|---|
 | Demo (no model) | `demo`, `demo:frame-motion` | nothing | runs: CI starts the app with it and gets an answer over `/ws` |
 | OpenAI | `openai:<model>` | `OPENAI_API_KEY` | **unit-tested only** |
-| Anthropic | `anthropic:<model>` | `ANTHROPIC_API_KEY` | **unit-tested only** |
+| Anthropic | `anthropic:<model>` | `ANTHROPIC_API_KEY` | **runs:** real calls on 2026-11-28 (`claude-haiku-5-5`, `claude-haiku-4-5-20251001`, `claude-sonnet-5-5`; the check command and a two-agent run) |
 | Ollama | `ollama:<model>` | a running Ollama (`OLLAMA_BASE_URL`, default `http://localhost:11434`) | **unit-tested only** |
 | Any OpenAI-compatible server (OpenRouter, vLLM, ...) | `compat:<model>` | `VLM_COMPAT_BASE_URL`, optional `VLM_COMPAT_API_KEY` | **unit-tested only** |
 | Local VideoLLaMA3-7B | `hf` | a CUDA GPU, the `gpu` extra, `VLM_ENABLE_HF=1` | **not run on a GPU** since the overhaul ([details](#local-model-cuda-gpu)) |
 
 "Unit-tested only" means the adapter is tested with fake SDK clients and was checked against a local stub server, but
-no real provider has answered a call from this code yet. You can try one provider with one call before starting the
-app: see [Checking a provider](#checking-a-provider).
+that provider has not yet answered a real call from this code. You can try one provider with one call before starting
+the app: see [Checking a provider](#checking-a-provider).
 
 > **Cost and privacy.** Every agent except `demo`, `hf` and Ollama on this machine (not its cloud models) is treated as **remote and paid**.
 > A remote agent receives the frames of your video and may charge for every call. The app starts paused and calls
@@ -63,8 +63,9 @@ app: see [Checking a provider](#checking-a-provider).
 
 - **Two agents side by side:** agent A left, agent B right, the video in the middle. Both get the same frames of the
   same 0.5 s moment; the page shows those frames, the moment's time range and which round each answer is about.
-- **Agents chosen in the page:** provider and model per side, from the provider's model list where it offers one (free
-  text always works). An unavailable provider says why, for example a missing key.
+- **Agents chosen in the page:** provider and model per side. The model dropdown fills from the provider's model list
+  (a free call, no generation) when the page opens and on every provider change; "Other (type an id)..." takes any id,
+  and the text box alone is shown when listing fails. An unavailable provider says why, for example a missing key.
 - **Per answer:** latency, input and output tokens, estimated cost ("n/a" when unknown, "no API fee" for the local model and Ollama on this machine),
   the model and the parameters actually sent; session totals per agent. "Faster" and "cheaper" are marked only when
   both answered the same round with known values; there is no quality verdict. A **Metrics** switch hides the figures.
@@ -340,8 +341,8 @@ real weights, answer quality, VRAM and latency.
 
 - **A proof of concept for one user on localhost:** no authentication, and settings and source are shared by all
   connected clients. Not a production service.
-- **API agents are unit-tested only** and the local model has not run on a GPU since the overhaul (see
-  [Providers](#providers)).
+- **Only Anthropic has run against the real API;** the other API agents are unit-tested only, and the local model has
+  not run on a GPU since the overhaul (see [Providers](#providers)).
 - **Answers lag the video:** an answer is about a half-second moment that has passed on screen by the time it arrives;
   the card says which moment. Each clip is answered on its own (no memory), and output arrives as a whole message.
 - **Resample FPS is coarse:** a 0.5 s clip has only 5 frames. Slider values 1 and 2 give 1 frame (shown as 2 fps), 3 to
