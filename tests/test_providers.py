@@ -220,3 +220,8 @@ def test_one_cv2_check():
     assert cv2_distributions(report("numpy", "opencv-python-headless")) == ["opencv-python-headless"]
     assert len(cv2_distributions(report("opencv_python", "opencv-python-headless"))) == 2
     assert cv2_distributions(report("numpy")) == []
+
+
+def test_agent_b_defaults_to_the_second_demo_variant(monkeypatch):
+    monkeypatch.delenv("VLM_AGENT_B", raising=False)
+    assert agent_spec_from_env("B") == AgentSpec("demo", "frame-motion")
