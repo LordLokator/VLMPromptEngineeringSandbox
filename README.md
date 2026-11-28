@@ -20,7 +20,7 @@ This starts two built-in **demo agents**. They run no model: they answer with fa
 received (size, brightness, where and when the picture changes), so they ignore the prompt. They show the layout and
 the flow, not model quality.
 
-To compare real models, set a key or URL (in the shell, or in a git-ignored `.env` file next to `main.py`) and pick the
+To compare real models, set a key or URL (in the shell, or in a `.env` file: `cp .env.example .env`, git-ignored) and pick the
 provider and model in each agent's card, or at startup:
 
 ```bash
@@ -131,7 +131,7 @@ flowchart LR
 ## Configuration
 
 All settings are environment variables, all optional. A git-ignored `.env` in the repository root is read at startup
-(and by the provider check); a variable set in the real environment wins, even when empty. An empty variable counts as
+(and by the provider check); `.env.example` lists every setting commented out, ready to copy. A variable set in the real environment wins, even when empty. An empty variable counts as
 unset.
 
 **Fail fast:** every setting is checked before the server starts. An invalid one stops the app with exit code 2 and

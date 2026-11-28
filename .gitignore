@@ -128,7 +128,13 @@ celerybeat.pid
 *.sage.py
 
 # Environments
+# Secrets: .env and every variant (.env.local, .env.development.local, .env.production, ...), direnv's .envrc
+# and *.env files. Only the template is tracked.
 .env
+.env.*
+*.env
+.envrc
+!.env.example
 .venv
 env/
 venv/
