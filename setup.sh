@@ -5,7 +5,7 @@ set -e
 echo "Creating virtual environment '.venv'..."
 python3 -m venv .venv
 source .venv/bin/activate
-pip install ".[gpu]"
+pip install ".[gpu]"  # the base app (headless OpenCV, API SDKs) plus the local model stack
 # flash-attn is built with --no-build-isolation, so the build helpers must be present first
 pip install --upgrade pip setuptools wheel packaging
 # flash-attn comes from an upstream commit, not PyPI: the latest PyPI release (2.8.3.post2, checked
@@ -17,3 +17,5 @@ pip install "git+https://github.com/Dao-AILab/flash-attention.git@${FLASH_ATTN_C
 
 # Log completion
 echo "Setup completed successfully on $(date)"
+echo "Start the app with the local model: VLM_AGENT_A=hf VLM_ENABLE_HF=1 python main.py"
+echo "(without these two variables it starts with the demo agent, which runs no model)"

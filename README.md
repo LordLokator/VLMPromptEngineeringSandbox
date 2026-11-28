@@ -46,6 +46,24 @@
 
 ## Quick start
 
+### Without a GPU (demo agent)
+
+Needs Python 3.11 or 3.12 and `git`; no GPU, no torch, no API key.
+
+```bash
+git clone https://github.com/LordLokator/VLMPromptEngineeringSandbox VLMDemo
+cd VLMDemo
+python -m venv .venv
+source .venv/bin/activate     # Windows: .venv\Scripts\activate
+pip install .
+python main.py
+```
+
+Open <http://localhost:8000/>. The sample video plays and the demo agent answers each clip with facts measured on its
+frames. It runs no model, so its answers ignore the prompt.
+
+### With the local model (CUDA GPU)
+
 Requirements (the tested OS is Ubuntu, with the university version):
 
 - A CUDA GPU with FlashAttention2 support (Ampere or newer; see [Hardware](#hardware-and-performance)).
@@ -75,8 +93,10 @@ Open <http://localhost:8000/>. The model repository is downloaded from Hugging F
 that local snapshot; no VideoLLaMA3 clone is needed. Inference starts once the model has loaded, with a placeholder
 prompt until you send your own.
 
-No GPU? Install the development extra (`pip install ".[dev]"`) and run `python main.py`: the video plays and the demo
-agent answers. You can also run the [tests](#development).
+Every install uses the headless OpenCV build (`opencv-python-headless`); the `gpu` extra no longer adds
+`opencv-python`. The model's remote code at the pinned revision calls only `cv2.imread` and `cv2.cvtColor`, which the
+headless build has. That was checked by reading the code; **the headless build has not been imported together with
+the remote code.**
 
 ## Architecture
 
@@ -320,7 +340,7 @@ default) or the local model.
 
 | Planned | What it means |
 |---|---|
-| Run without a GPU | A base install that starts with built-in demo agents (no model); the local VideoLLaMA3 becomes optional. The demo agent exists; the base install still lacks OpenCV. |
+| Run without a GPU | A base install that starts with built-in demo agents (no model); the local VideoLLaMA3 becomes optional. **Done for one agent:** `pip install .` runs the app with the demo agent. |
 | Your own models | OpenAI, Anthropic, Ollama or any OpenAI-compatible URL. Keys and URLs come from environment variables. |
 | Model selection | Choose each agent's provider and model in the UI while the app runs. |
 | Side-by-side view | Video in the middle, one agent on each side. Both get the same sampled frames, and the page shows them. |
@@ -361,8 +381,9 @@ ruff check .
 pytest -q
 ```
 
-CI runs lint and a compile check, tests on Python 3.11 and 3.12, and a dependency-resolution check of the `gpu` extra on
-both versions.
+CI runs lint and a compile check, tests on Python 3.11 and 3.12, a plain `pip install .` in a new venv that imports the
+app with torch blocked, and a dependency-resolution check of the `gpu` and `dev` extras on both versions (each must
+resolve to exactly one OpenCV distribution).
 
 All dependencies are declared in [`pyproject.toml`](pyproject.toml), whose comments describe each group and how to install
 it; no requirements or lock file is committed. The security workflow's osv-scanner job resolves the `gpu` extra (and the

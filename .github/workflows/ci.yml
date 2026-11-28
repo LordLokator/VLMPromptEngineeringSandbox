@@ -46,8 +46,8 @@ jobs:
       - run: pip install ".[dev]"
       - run: pytest -q
 
-  # Resolution only (no wheels installed): gives Dependabot PRs a cheap signal.
-  deps:
+  # The plain install is the whole GPU-free app: install it into a new venv and import the app with torch blocked.
+  install:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
@@ -58,8 +58,27 @@ jobs:
           python-version: "3.11"
           cache: pip
           cache-dependency-path: pyproject.toml
-      - run: pip install --dry-run ".[gpu]"
+      - run: python -m venv /tmp/app-venv
+      - run: /tmp/app-venv/bin/pip install .
+      - run: /tmp/app-venv/bin/python tests/import_without_gpu.py
+
+  # Resolution only (no wheels installed): gives Dependabot PRs a cheap signal. Each resolve must contain
+  # exactly one distribution that provides cv2.
+  deps:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ["3.11", "3.12"]
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
       - uses: actions/setup-python@v7
         with:
-          python-version: "3.12"
-      - run: pip install --dry-run ".[gpu]"
+          python-version: ${{ matrix.python-version }}
+          cache: pip
+          cache-dependency-path: pyproject.toml
+      - run: pip install --dry-run --ignore-installed --quiet --report /tmp/gpu.json ".[gpu]"
+      - run: pip install --dry-run --ignore-installed --quiet --report /tmp/dev.json ".[dev]"
+      - run: python tests/one_cv2.py /tmp/gpu.json /tmp/dev.json

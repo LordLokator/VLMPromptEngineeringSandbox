@@ -1,6 +1,8 @@
 """The provider contract, the demo and HF providers, and agent selection from the environment."""
+import os
 import subprocess
 import sys
+from pathlib import Path
 
 import cv2
 import numpy as np
@@ -166,3 +168,22 @@ def test_bad_agent_settings_end_the_app_before_anything_starts(monkeypatch):
         app_main.main()
     assert exit_info.value.code == 2
     assert started == []
+
+
+def test_the_app_imports_and_builds_the_default_agent_without_the_gpu_stack():
+    env = {k: v for k, v in os.environ.items() if k not in AGENT_ENV}
+    script = str(Path(__file__).with_name("import_without_gpu.py"))
+    result = subprocess.run([sys.executable, script], capture_output=True, text=True, env=env)
+    assert result.returncode == 0, result.stderr
+    assert result.stdout.strip() == "ok: demo:frame-facts"
+
+
+def test_one_cv2_check():
+    from tests.one_cv2 import cv2_distributions
+
+    def report(*names):
+        return {"install": [{"metadata": {"name": n}} for n in names]}
+
+    assert cv2_distributions(report("numpy", "opencv-python-headless")) == ["opencv-python-headless"]
+    assert len(cv2_distributions(report("opencv_python", "opencv-python-headless"))) == 2
+    assert cv2_distributions(report("numpy")) == []
