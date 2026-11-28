@@ -98,7 +98,7 @@ def make_spec(source_key: str, source_epoch: int, media: MediaLibrary | None = N
             return SourceSpec(source_key, source_epoch, f"Sample {number} ({Path(path).name})", path)
     match = _MEDIA_KEY.fullmatch(source_key)
     if match:
-        file = (media or MEDIA).path(int(match.group(1)))
+        file = (media if media is not None else MEDIA).path(int(match.group(1)))
         if file is not None:
             return SourceSpec(source_key, source_epoch, f"{file.name} (media)", str(file))
     raise ValueError(f"Unknown source: {source_key!r}")
@@ -107,5 +107,5 @@ def make_spec(source_key: str, source_epoch: int, media: MediaLibrary | None = N
 def selectable(media: MediaLibrary | None = None) -> list[SourceSpec]:
     """Every source a client may select, as of the last media scan: samples, media files, the webcam."""
     keys = [f"sample:{n}" for n in range(1, len(SAMPLE_PATHS) + 1)]
-    keys += [f"media:{number}" for number, _name in (media or MEDIA).listing()]
+    keys += [f"media:{number}" for number, _name in (media if media is not None else MEDIA).listing()]
     return [make_spec(key, 0, media) for key in [*keys, WEBCAM_KEY]]

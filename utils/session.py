@@ -336,7 +336,6 @@ class CompareSession:
             self._broadcast(self.state())
         return []
 
-
     def _list_sources(self) -> list[dict]:
         """Rescan `media/` (files copied there while the app runs). Everyone gets the new list if it changed."""
         if self.hub.media.scan():
