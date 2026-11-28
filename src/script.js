@@ -242,7 +242,11 @@ function renderSlot(slot, info, providers) {
     }));
     select.value = current;
     if (!info) return;
-    if (!card.dirty) r("model").value = info.model || "";
+    if (!card.dirty) {
+        r("model").value = info.model || "";
+        syncModelPick(card);
+    }
+    if (card.listedFor === null) listModels(card, info.provider, false);  // first state frame: fill the dropdown
     r("enabled").checked = info.enabled;
     r("badge").textContent = info.provider === "demo" ? "demo: no model" : info.label;
     r("badge").className = `badge ${info.provider === "demo" ? "text-bg-warning" : "text-bg-secondary"}`;
@@ -375,19 +379,53 @@ function markComparison(roundId) {
     for (const slot of SLOTS) renderRoundMetrics(cards[slot], cards[slot].latest.metrics, marks[slot]);
 }
 
+const OTHER_MODEL = "(other)";  // the dropdown's "type an id" entry; model ids never contain parentheses
+
 function renderModels(data) {
     const card = SLOTS.map((s) => cards[s]).find((c) => c.pendingList === data.provider);
     if (!card) return;
     card.pendingList = null;
-    const models = Array.isArray(data.models) ? data.models : [];
-    card.role("models").replaceChildren(...models.map((m) => {
-        const option = el("option");
-        option.value = String(m.id);
-        return option;
-    }));
+    card.listedFor = data.provider;
+    const models = Array.isArray(data.models) ? data.models.map((m) => String(m.id)) : [];
+    card.models = models;
     card.role("listInfo").textContent = data.error
-        ? `${data.error}. You can still type a model id.`
-        : `${models.length} models listed (vision models; unknown ones kept).`;
+        ? `${data.error}. Type a model id instead.`
+        : (models.length ? "" : "No models listed. Type a model id instead.");
+    syncModelPick(card);
+}
+
+// The dropdown shows the listed models; the text box stays the value sent, and is shown for ids not in the list.
+function syncModelPick(card) {
+    const pick = card.role("modelPick");
+    const input = card.role("model");
+    const current = input.value.trim();
+    if (!card.models.length) {
+        pick.hidden = true;
+        input.hidden = false;
+        return;
+    }
+    const options = card.models.map((id) => {
+        const option = el("option", null, id);
+        option.value = id;
+        return option;
+    });
+    const other = el("option", null, "Other (type an id)...");
+    other.value = OTHER_MODEL;
+    const placeholder = el("option", null, "Pick a model");
+    placeholder.value = "";
+    placeholder.disabled = true;
+    pick.replaceChildren(placeholder, ...options, other);
+    const listed = card.models.includes(current);
+    pick.value = listed ? current : (current || card.typing ? OTHER_MODEL : "");
+    pick.hidden = false;
+    input.hidden = pick.value !== OTHER_MODEL;
+}
+
+function listModels(card, provider, refresh) {
+    card.pendingList = provider;
+    card.listedFor = provider;
+    card.role("listInfo").textContent = "Listing models...";
+    send({ type: "list_models", provider, refresh });
 }
 
 // ---- cards -----------------------------------------------------------------------------------------------------
@@ -396,18 +434,13 @@ function buildCard(slot) {
     const node = $("cardTemplate").content.firstElementChild.cloneNode(true);
     $(`slot${slot}`).appendChild(node);
     const role = (name) => node.querySelector(`[data-role="${name}"]`);
-    const card = { el: node, role, latest: null, pendingList: null, dirty: false,
+    const card = { el: node, role, latest: null, pendingList: null, listedFor: null, models: [], typing: false,
+        dirty: false,
         totals: { calls: 0, errors: 0, latencies: [], input: 0, output: 0, cost: 0, priced: 0, local: 0, unpriced: 0 } };
     role("title").textContent = `Agent ${slot}`;
-    role("models").id = `models${slot}`;
-    role("model").setAttribute("list", `models${slot}`);
     role("enabled").id = `enabled${slot}`;
     role("enabledLabel").setAttribute("for", `enabled${slot}`);
-    role("listBtn").onclick = () => {
-        card.pendingList = role("provider").value;
-        role("listInfo").textContent = "Listing...";
-        send({ type: "list_models", provider: role("provider").value, refresh: true });
-    };
+    role("listBtn").onclick = () => listModels(card, role("provider").value, true);
     const apply = () => {
         const model = role("model").value.trim();
         if (send({ type: "set_agent", slot, provider: role("provider").value, model: model || null,
@@ -416,11 +449,25 @@ function buildCard(slot) {
     role("applyBtn").onclick = apply;
     role("enabled").onchange = apply;
     role("model").addEventListener("input", () => { card.dirty = true; });
+    role("modelPick").onchange = () => {
+        card.dirty = true;
+        const value = role("modelPick").value;
+        card.typing = value === OTHER_MODEL;
+        role("model").hidden = !card.typing;
+        if (card.typing) {
+            role("model").value = "";
+            role("model").focus();
+        } else {
+            role("model").value = value;
+        }
+    };
     role("provider").onchange = () => {
         card.dirty = true;
+        card.typing = false;
+        card.models = [];
         role("model").value = "";
-        role("models").replaceChildren();
-        role("listInfo").textContent = "";
+        syncModelPick(card);
+        listModels(card, role("provider").value, false);  // free: the provider's model list, no generation
     };
     renderTotals(card);
     cards[slot] = card;

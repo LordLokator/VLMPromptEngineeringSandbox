@@ -65,3 +65,7 @@ body.hide-metrics .metrics {
     max-height: 8rem;
     overflow-y: auto;
 }
+
+[hidden] {
+    display: none !important;  /* the model dropdown and id box toggle with the hidden attribute */
+}
