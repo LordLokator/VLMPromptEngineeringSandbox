@@ -1,11 +1,16 @@
-"""Demo provider: no model. It reports facts measured on the frames it received, so the app runs anywhere."""
+"""Demo provider: no model. It reports facts measured on the frames it received, so the app runs anywhere.
+
+Two variants, so two demo slots never show the same text: `frame-facts` (size, brightness, change) and
+`frame-motion` (when and where the picture changes most).
+"""
 import time
 
 from loguru import logger
 
 from utils.providers import GenerateRequest, ModelInfo, Result
 
-DEMO_MODELS = ("frame-facts",)
+DEMO_MODELS = ("frame-facts", "frame-motion")
+CHANGED_PIXEL = 25  # a grey-level difference above this counts as a changed pixel
 
 
 class DemoProvider:
@@ -25,7 +30,8 @@ class DemoProvider:
 
     def generate(self, request: GenerateRequest) -> Result:
         start = time.perf_counter()
-        text = describe_frames(request.frames, request.frame_times)
+        describe = describe_motion if self.model == "frame-motion" else describe_frames
+        text = describe(request.frames, request.frame_times)
         return Result(
             text=text,
             finish_reason="stop",
@@ -42,8 +48,7 @@ class DemoProvider:
         )
 
 
-def describe_frames(frames: tuple[bytes, ...], times: tuple[float, ...]) -> str:
-    """Plain facts about the frames: count, size, brightness, change between frames."""
+def _grays(frames: tuple[bytes, ...]) -> list:
     import cv2
     import numpy as np
 
@@ -54,6 +59,14 @@ def describe_frames(frames: tuple[bytes, ...], times: tuple[float, ...]) -> str:
             logger.warning("Demo provider: a frame could not be decoded.")
             continue
         grays.append(image.astype(np.float32))
+    return grays
+
+
+def describe_frames(frames: tuple[bytes, ...], times: tuple[float, ...]) -> str:
+    """Plain facts about the frames: count, size, brightness, change between frames."""
+    import numpy as np
+
+    grays = _grays(frames)
     if not grays:
         return "Demo (no model): received no readable frames."
 
@@ -69,4 +82,44 @@ def describe_frames(frames: tuple[bytes, ...], times: tuple[float, ...]) -> str:
     changes = [float(np.abs(b - a).mean()) for a, b in zip(grays, grays[1:], strict=False) if a.shape == b.shape]
     if changes:
         parts.append(f"mean change between frames {sum(changes) / len(changes):.1f}/255")
+    return "; ".join(parts) + "."
+
+
+_ROWS = ("top", "middle", "bottom")
+_COLUMNS = ("left", "centre", "right")
+
+
+def describe_motion(frames: tuple[bytes, ...], times: tuple[float, ...]) -> str:
+    """When and where the picture changes most between consecutive frames."""
+    import numpy as np
+
+    grays = _grays(frames)
+    if not grays:
+        return "Demo (no model), motion: received no readable frames."
+    span = f", {times[0]:.2f}-{times[-1]:.2f} s" if times else ""
+    head = f"Demo (no model), motion: {len(grays)} frame{'s' if len(grays) != 1 else ''}{span}"
+    pairs = [(i, np.abs(b - a)) for i, (a, b) in enumerate(zip(grays, grays[1:], strict=False)) if a.shape == b.shape]
+    if not pairs:
+        return f"{head}; one frame only, so no motion to measure."
+
+    index, diff = max(pairs, key=lambda pair: float(pair[1].mean()))
+    parts = [head]
+    if len(times) == len(grays):
+        parts.append(f"largest change {times[index]:.2f}-{times[index + 1]:.2f} s ({float(diff.mean()):.1f}/255)")
+    else:
+        parts.append(f"largest change between frames {index + 1} and {index + 2} ({float(diff.mean()):.1f}/255)")
+    changed = float(np.mean([(d > CHANGED_PIXEL).mean() for _i, d in pairs])) * 100
+    parts.append(f"changed area {changed:.0f}% of the picture")
+    total = sum(d for _i, d in pairs)
+    if float(total.max()) > 0:
+        height, width = total.shape
+        cells = [
+            (float(total[r * height // 3:(r + 1) * height // 3, c * width // 3:(c + 1) * width // 3].sum()), r, c)
+            for r in range(3) for c in range(3)
+        ]
+        _sum, row, column = max(cells)
+        where = "centre" if (row, column) == (1, 1) else f"{_ROWS[row]} {_COLUMNS[column]}"
+        parts.append(f"most change in the {where}")
+    else:
+        parts.append("no change at all")
     return "; ".join(parts) + "."

@@ -34,6 +34,16 @@ class FakeTensor:
 
 
 @pytest.fixture
+def make_agent():
+    """Build fake agents (tests/fake_agents.py); every hanging one is released at teardown."""
+    from tests.fake_agents import AgentFactory
+
+    factory = AgentFactory()
+    yield factory
+    factory.release_all()
+
+
+@pytest.fixture
 def fake_torch(monkeypatch):
     mod = types.SimpleNamespace(Tensor=FakeTensor, bfloat16="bf16")
     monkeypatch.setitem(sys.modules, "torch", mod)

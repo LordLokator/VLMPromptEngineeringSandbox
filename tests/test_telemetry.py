@@ -7,7 +7,6 @@ import pytest
 
 from main import make_clip_handler, process_clip
 from utils import telemetry
-from utils.providers import Result
 from video_handling.clip_handling import ClipSample
 
 PROMPT = "SECRET-PROMPT-TEXT"
@@ -15,18 +14,6 @@ PROMPT = "SECRET-PROMPT-TEXT"
 
 def sample(path):
     return ClipSample(0, "sample:1", 0, "Sample 1", 0.0, 0.5, 0, str(path))
-
-
-class FakeVLM:
-    label = "fake/backend"
-
-    def __init__(self, fail=False):
-        self.fail = fail
-
-    def generate(self, request):
-        if self.fail:
-            raise RuntimeError("boom")
-        return Result(request.prompt, "stop", "m", "m", None, None, None, None, 1.0, None, None)
 
 
 def run(vlm):
@@ -84,12 +71,12 @@ def points(reader):
     return out
 
 
-def test_inference_span_and_histogram_ok(otel):
+def test_inference_span_and_histogram_ok(otel, make_agent):
     exporter, reader = otel
-    run(FakeVLM())
+    run(make_agent(model="fake-model"))
     (span,) = exporter.get_finished_spans()
     assert span.name == "vlm.inference"
-    assert span.attributes["vlm.backend"] == "fake/backend"
+    assert span.attributes["vlm.backend"] == "demo:fake-model"
     assert span.attributes["vlm.fps"] == 3
     assert span.attributes["vlm.temperature"] == 0.5
     (hist,) = points(reader)["vlm.inference.duration"]
@@ -97,11 +84,11 @@ def test_inference_span_and_histogram_ok(otel):
     assert "vlm.inference.errors" not in points(reader)
 
 
-def test_error_sets_status_and_counts(otel):
+def test_error_sets_status_and_counts(otel, make_agent):
     from opentelemetry.trace import StatusCode
 
     exporter, reader = otel
-    run(FakeVLM(fail=True))
+    run(make_agent(raise_on={1: RuntimeError("boom")}))
     (span,) = exporter.get_finished_spans()
     assert span.status.status_code == StatusCode.ERROR
     p = points(reader)
@@ -134,22 +121,18 @@ def test_ws_role_label_is_bounded(otel):
     assert p["ws.connections"][0].value == 1
 
 
-def test_no_prompt_text_in_telemetry(otel):
+def test_no_prompt_text_in_telemetry(otel, make_agent):
     exporter, reader = otel
-    run(FakeVLM())
+    run(make_agent(replies=[PROMPT]))  # an answer that quotes the prompt
     dump = repr([s.attributes for s in exporter.get_finished_spans()]) + repr(points(reader))
     assert PROMPT not in dump
     assert "c.mp4" not in dump
 
 
-def test_exception_text_stays_out_of_telemetry(otel):
+def test_exception_text_stays_out_of_telemetry(otel, make_agent):
     # Real decode/model errors quote the clip path (and could quote the prompt).
-    class LeakyVLM(FakeVLM):
-        def generate(self, request):
-            raise OSError(f"cannot decode {request.video_path} for {request.prompt}")
-
     exporter, reader = otel
-    run(LeakyVLM())
+    run(make_agent(raise_on={1: OSError(f"cannot decode c.mp4 for {PROMPT}")}))
     (span,) = exporter.get_finished_spans()
     assert span.attributes["error.type"] == "OSError"
     dump = span.to_json() + repr(points(reader))
