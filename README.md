@@ -6,6 +6,12 @@ tokens and estimated cost side by side, live in the browser. No GPU needed.**
 [![ci](https://github.com/LordLokator/VLMPromptEngineeringSandbox/actions/workflows/ci.yml/badge.svg)](https://github.com/LordLokator/VLMPromptEngineeringSandbox/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 
+![Two Anthropic models answer the same half-second moment of a street video, side by side](assets/screenshot.png)
+
+*A real run on the same 5 frames: `claude-haiku-5-5` (left) was cheaper than `claude-haiku-4-5` (right), $0.00033 vs
+$0.00255, but slower, 2.73 s vs 1.69 s: it wrote about four times the output tokens. Trade-offs like this are what the
+page is for.*
+
 ## Quick start (no GPU, no key)
 
 Needs Python 3.11 or 3.12 and `git`. Inside a virtual environment:
@@ -419,6 +425,7 @@ src/                     frontend
 presets/, static_video/  built-in prompts, sample videos
 media/                   your own videos (created at start, git-ignored)
 tests/                   GPU-free test suite
+assets/                  README screenshot
 ```
 
 | Area | Used |
