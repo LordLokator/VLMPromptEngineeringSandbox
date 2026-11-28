@@ -39,7 +39,7 @@ from a real two-model run.</sub>
   rounds and one budget of 50 rounds or $0.50 of priced calls, refilled only by "Reset budget"; auth errors, three
   failures in a row and the last page closing pause it. Also set a spending limit at the provider.
 - **Runtime controls:** prompt, temperature (0.01 to 1.0) and resample FPS (slider 1 to 10) for the next round.
-- **Sources:** a bundled street video, **your own `.mp4` / `.webm` files** copied into the `media/` folder next to
+- **Sources:** two bundled street videos, **your own `.mp4` / `.webm` files** copied into the `media/` folder next to
   `main.py` (created at start, git-ignored), or the **server's** webcam, picked from the page. Files loop. After copying
   a file in, press **Rescan media/** (or reload the page). The page only sends the id the server listed (`sample:1`,
   `media:3`, `webcam`), never a path, so it cannot open any other file. Files are refused, with the reason shown next
