@@ -277,7 +277,10 @@ def _non_null_handlers():
     return found
 
 
-def test_wire_compat_sends_nothing_meant_for_openai(monkeypatch):
+@pytest.mark.parametrize("name, url_env, auth", [
+    ("compat", "VLM_COMPAT_BASE_URL", "Bearer EMPTY"), ("ollama", "OLLAMA_BASE_URL", "Bearer ollama"),
+])
+def test_wire_sends_nothing_meant_for_openai(monkeypatch, name, url_env, auth):
     from loguru import logger
 
     from utils.logging_setup import configure_logging
@@ -298,8 +301,8 @@ def test_wire_compat_sends_nothing_meant_for_openai(monkeypatch):
     try:
         with stub_server() as (base, recorder):
             recorder.route("POST", "/v1/chat/completions", CHAT_REPLY)
-            monkeypatch.setenv("VLM_COMPAT_BASE_URL", base + "/v1")
-            result = build("compat", "stub-model").generate(request())
+            monkeypatch.setenv(url_env, base + ("/v1" if name == "compat" else ""))
+            result = build(name, "stub-model").generate(request())
             handlers_after = _non_null_handlers()
     finally:
         logging.captureWarnings(False)
@@ -311,7 +314,7 @@ def test_wire_compat_sends_nothing_meant_for_openai(monkeypatch):
 
     (sent,) = recorder.requests
     headers = sent["headers"]
-    assert headers["authorization"] == "Bearer EMPTY"
+    assert headers["authorization"] == auth
     assert OPENAI_KEY not in repr(sent)
     assert not {"openai-organization", "openai-project", "x-leak"} & set(headers)
     assert sent["body"]["max_tokens"] == 64 and sent["body"]["temperature"] == 0.3
