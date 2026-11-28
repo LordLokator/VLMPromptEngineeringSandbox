@@ -162,6 +162,7 @@ def test_bad_agent_settings_end_the_app_before_anything_starts(monkeypatch):
 
     monkeypatch.setenv("VLM_AGENT_A", "openai:gpt-x")
     monkeypatch.setattr(app_main, "configure_logging", lambda: None)
+    monkeypatch.setattr(app_main, "load_env_file", lambda: False)
     started = []
     monkeypatch.setattr(app_main, "start_server_threaded", lambda *_: started.append(1))
     with pytest.raises(SystemExit) as exit_info:

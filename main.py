@@ -16,6 +16,7 @@ from utils.errors import log_failure
 from utils.logging_setup import configure_logging, route_stdlib_logging
 from utils.providers import SYSTEM_PROMPT, GenerateRequest, Provider
 from utils.providers.agents import AgentConfigError, agent_spec_from_env, build_agent
+from utils.providers.settings import load_env_file
 from web_engine import start_server_threaded, broadcast_sync, emit
 from video_handling.clip_handling import ClipRecorder, ClipSample
 from video_handling.streaming import CaptureHub
@@ -151,6 +152,7 @@ def shutdown(
 
 
 def main():
+    load_env_file()  # keys and URLs from .env; real environment variables win
     configure_logging()
     logger.info("Main app initialization...")
 

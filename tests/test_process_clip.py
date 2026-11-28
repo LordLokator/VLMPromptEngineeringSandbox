@@ -271,6 +271,7 @@ def test_signal_during_backend_load_exits_cleanly(monkeypatch):
 
     server = Server()
     monkeypatch.setattr(app_main, "configure_logging", lambda: None)  # would replace global hooks
+    monkeypatch.setattr(app_main, "load_env_file", lambda: False)  # never a developer's .env in tests
     monkeypatch.setattr(app_main, "route_stdlib_logging", lambda: None)
     monkeypatch.setattr(app_main, "start_server_threaded", lambda *_: server)
     monkeypatch.setattr(app_main, "CaptureHub", Hub)

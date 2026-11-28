@@ -7,6 +7,7 @@ import os
 from dataclasses import dataclass
 
 from utils.providers import PROVIDERS, Provider
+from utils.providers.settings import ProviderConfigError, check_model_id
 
 ENABLE_HF_ENV = "VLM_ENABLE_HF"
 REMOVED_BACKEND_ENV = "VLM_BACKEND"
@@ -40,6 +41,11 @@ def parse_agent(value: str) -> AgentSpec:
         raise AgentConfigError(f"Unknown provider {provider!r}; one of: {', '.join(PROVIDERS)}")
     if sep and not model:
         raise AgentConfigError(f"No model after {provider!r}: use {provider} or {provider}:<model>")
+    if model:
+        try:
+            check_model_id(model)
+        except ProviderConfigError as e:
+            raise AgentConfigError(str(e)) from e
     return AgentSpec(provider, model or None)
 
 
@@ -70,7 +76,24 @@ def agent_spec_from_env(slot: str = "A") -> AgentSpec:
 
 
 def build_agent(spec: AgentSpec) -> Provider:
-    """Build the agent. For hf this loads the model synchronously (slow, needs a CUDA GPU)."""
+    """Build an agent the app accepts. For hf this loads the model synchronously (slow, needs a CUDA GPU)."""
+    if spec.provider not in APP_PROVIDERS:
+        raise AgentConfigError(f"{spec.provider} is not available in the app yet")
+    return build_provider(spec)
+
+
+def build_provider(spec: AgentSpec) -> Provider:
+    """Any provider, for the check CLI and later the app. Raises ProviderConfigError when a key or URL is missing."""
+    if spec.provider in ("openai", "ollama", "compat", "anthropic"):
+        if spec.model is None:
+            raise ProviderConfigError(f"{spec.provider} needs a model: {spec.provider}:<model>")
+        if spec.provider == "anthropic":
+            from utils.providers import anthropic_provider
+
+            return anthropic_provider.build(spec.model)
+        from utils.providers import openai_compat
+
+        return openai_compat.build(spec.provider, spec.model)
     if spec.provider == "demo":
         from utils.providers.demo import DemoProvider
 
