@@ -1,9 +1,11 @@
 """Capture checks that need a real device or a real recording. Skipped unless VLM_MANUAL_TESTS=1.
 
 - The webcam test opens camera 0 of this machine for a few seconds. Frames stay in memory.
-- The WebM test needs VLM_MANUAL_WEBM: the path of a .webm recorded by a browser, at least 3 s long.
+- The WebM test needs VLM_MANUAL_WEBM: the path of a .webm recorded by a browser, at least 3 s long (VP8, VP9 or
+  AV1). It is copied into a temporary media folder and played as `media:1`, as the app would play it from `media/`.
 """
 import os
+import shutil
 import threading
 import time
 from pathlib import Path
@@ -11,8 +13,8 @@ from pathlib import Path
 import cv2
 import pytest
 
-from video_handling import source
 from video_handling.sampling import GridSampler
+from video_handling.source import MediaLibrary
 from video_handling.streaming import CaptureHub
 
 pytestmark = [
@@ -51,12 +53,15 @@ def test_webcam_delivers_clips_in_real_time():
     assert 1.8 <= got.clips[5][0] - got.clips[0][0] <= 4.0
 
 
-def test_browser_recorded_webm_plays_at_its_own_speed(monkeypatch):
+def test_browser_recorded_webm_plays_at_its_own_speed(tmp_path):
     path = os.environ.get("VLM_MANUAL_WEBM", "")
     if not Path(path).is_file():
         pytest.skip("VLM_MANUAL_WEBM does not name a file")
-    monkeypatch.setattr(source, "SAMPLE_PATHS", [path])
-    hub = CaptureHub()
+    media = MediaLibrary(tmp_path / "media")
+    media.folder.mkdir()
+    shutil.copy(path, media.folder / "recording.webm")
+    media.scan()
+    hub = CaptureHub("media:1", media=media)
     got = Clips(hub, 5)
     hub.start()
     try:

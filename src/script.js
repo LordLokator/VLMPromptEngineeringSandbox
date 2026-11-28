@@ -92,6 +92,7 @@ function connect() {
     ws.onopen = () => {
         retryDelayMs = 1000;
         log("system", "Connected");
+        send({ type: "list_sources" });  // files copied into media/ since the last scan show up on (re)load
     };
     ws.onerror = (err) => {
         // onclose always follows and reports it.
@@ -192,17 +193,38 @@ function renderState(data) {
     $("fpsEffective").textContent = num(settings.effective_fps) ? `(effective ${settings.effective_fps} fps)` : "";
     if (!msgInput.value && typeof settings.prompt === "string") msgInput.placeholder = `Current: ${settings.prompt}`;
 
-    const select = $("sourceSelect");
-    select.replaceChildren(...(data.sources || []).map((s) => {
-        const option = el("option", null, s.label);
-        option.value = s.key;
-        return option;
-    }));
-    const source = data.source || {};
-    select.value = source.key;
-    $("sourceError").textContent = source.error || "";
+    renderSources(data.sources || [], data.source || {});
 
     for (const slot of SLOTS) renderSlot(slot, slots.find((s) => s.slot === slot), data.providers || []);
+}
+
+// Source keys are issued by the server ("sample:<n>", "media:<n>", "webcam"); the page never sends a path.
+const SOURCE_GROUPS = [
+    ["sample:", "Bundled samples"],
+    ["media:", "Your files (media/ folder)"],
+    ["webcam", "Server webcam"],
+];
+
+function renderSources(sources, source) {
+    const select = $("sourceSelect");
+    select.replaceChildren(...SOURCE_GROUPS.map(([prefix, title]) => {
+        const group = el("optgroup");
+        group.label = title;
+        for (const s of sources) {
+            if (typeof s.key !== "string" || !s.key.startsWith(prefix)) continue;
+            const option = el("option", null, String(s.label));
+            option.value = s.key;
+            group.appendChild(option);
+        }
+        if (!group.children.length && prefix === "media:") {
+            const hint = el("option", null, "none yet: copy .mp4 / .webm files into media/, then rescan");
+            hint.disabled = true;
+            group.appendChild(hint);
+        }
+        return group;
+    }));
+    select.value = source.key;
+    $("sourceError").textContent = source.error || "";
 }
 
 function renderSlot(slot, info, providers) {
@@ -498,6 +520,7 @@ $("pauseBtn").onclick = () => send({ type: "control", action: "pause" });
 $("stepBtn").onclick = () => send({ type: "control", action: "step" });
 $("resetBudgetBtn").onclick = () => send({ type: "control", action: "reset_budget" });
 $("sendBtn").onclick = sendUpdate;
+$("sourceRescanBtn").onclick = () => send({ type: "list_sources" });
 $("sourceSelect").onchange = () => {
     send({ type: "set_source", source_key: $("sourceSelect").value });
     $("video").src = `/video_feed?ts=${Date.now()}`;

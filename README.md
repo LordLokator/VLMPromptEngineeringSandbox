@@ -39,8 +39,12 @@ from a real two-model run.</sub>
   rounds and one budget of 50 rounds or $0.50 of priced calls, refilled only by "Reset budget"; auth errors, three
   failures in a row and the last page closing pause it. Also set a spending limit at the provider.
 - **Runtime controls:** prompt, temperature (0.01 to 1.0) and resample FPS (slider 1 to 10) for the next round.
-- **Sources:** either bundled street video (looping) or the **server's** webcam, picked from the page. Sending webcam
-  frames to a remote provider asks for confirmation first.
+- **Sources:** a bundled street video, **your own `.mp4` / `.webm` files** copied into the `media/` folder next to
+  `main.py` (created at start, git-ignored), or the **server's** webcam, picked from the page. Files loop. After copying
+  a file in, press **Rescan media/** (or reload the page). The page only sends the id the server listed (`sample:1`,
+  `media:3`, `webcam`), never a path, so it cannot open any other file. Files are refused, with the reason shown next
+  to the picker, if they cannot be decoded or are larger than 1920x1080 or 1 GB. Sending webcam frames to a remote
+  provider asks for confirmation first.
 - **One capture:** the browser preview and the model's clips come from the same decoder, and the video plays from app
   start, also while the model is still loading. The preview is scaled down to at most 720 px high; clips keep the
   source resolution.
@@ -114,7 +118,7 @@ the remote code.**
 
 ```mermaid
 flowchart LR
-    SRC["Video source<br/>sample file or server webcam"]
+    SRC["Video source<br/>sample, file in media/ or server webcam"]
     UI["Browser UI<br/>vanilla JS"]
 
     subgraph APP["python main.py (one process)"]
@@ -148,8 +152,8 @@ Design choices:
   grid by frame timestamp (each point takes the latest frame at or before it), and never span two sources or the point
   where a file starts over. If timestamps stall or go backwards, the frame rate is used instead (30 FPS if the reported
   one is implausible). A file shorter than a clip holds its last frame. Writing clips happens on another thread.
-- **A failed source stays failed** until a source is selected again: a file that yields no frames, a missing
-  webcam, or one whose reads keep failing for 3 s. A camera read that never returns raises no error and delays a switch.
+- **A failed source stays failed** until a source is selected again: a file that is gone, cannot be opened, yields no
+  frames or is too large, a missing webcam, or one whose reads keep failing for 3 s. Another source still works. A camera read that never returns raises no error and delays a switch.
   After an error the preview shows an error image, and no clips are cut from it.
 - **Each clip knows its moment:** source, source change counter, start and end time and loop number (webcam: wall-clock
   time). The `round` frame carries them with small thumbnails of the frames sent. A result for a clip from before the
@@ -183,7 +187,8 @@ Every frame in both directions is a JSON object with a `type`.
 | `control` | `action`: `run` \| `pause` \| `step` \| `reset_budget` | Spend control; a refusal comes back as `error`. |
 | `set_agent` | `slot`: `A` \| `B`, `provider`, `model`?, `enabled`?: bool, `confirm`?: bool | Changes an agent from the next round. |
 | `list_models` | `provider`, `refresh`?: bool | Replies with `models`. |
-| `set_source` | `source_key`: `sample:1` \| `sample:2` \| `webcam`, `confirm`?: bool | Switches the source for all clients. |
+| `set_source` | `source_key`: one of the keys in `state.sources` (`sample:<n>`, `media:<n>`, `webcam`), `confirm`?: bool | Switches the source for all clients. A `media:<n>` key keeps naming the same file for the life of the server; a file deleted since is refused. |
+| `list_sources` | (none) | Rescans `media/`. If the list changed, all clients get `state`; otherwise only the sender. |
 
 Sending webcam frames to a remote agent needs `confirm: true`; without it the server answers with an `error` that has
 `confirm: "webcam_remote"`, and the page asks.
@@ -325,8 +330,10 @@ Measured by the author on Ubuntu + RTX 4090 (24 GB), with the university version
   the card says which moment.
 - **API agents are unit-tested only:** no OpenAI, Anthropic, Ollama or compatible server has answered a real call from
   this code yet. Costs are estimates from a vendored list-price snapshot.
-- **Capture is tested with fake and generated video only:** not with a real webcam, and not by watching the preview in a
-  browser. The capture error message is sent once, so a page opened later shows only the error image.
+- **Capture is tested with fake and generated video only:** not with a real webcam, not with a file recorded by a real
+  browser, and not by watching the preview in a browser. The tests generate corrupt, empty, truncated and oversized
+  files and a WebM shaped like a browser recording (no frame rate, uneven timestamps). AV1 files (some browsers record
+  AV1) depend on the decoders in the installed OpenCV build; they have not been tried, on Linux or elsewhere.
 - **No temporal memory:** each 0.5 s clip is answered on its own. Output arrives as a whole message, not token by token.
 - **Resample FPS is coarse:** a 0.5 s clip has only 5 frames. Slider values 1 and 2 give the model 1 frame (shown as
   2 fps), 3 to 5 give 2 frames (4 fps), and 6 to 10 give all 5 (10 fps).
@@ -415,7 +422,7 @@ it costs. **Done and tested with the demo agents and fake API clients**, not yet
 | Side-by-side view | Done: video in the middle, one agent on each side, the frames both received above the prompt. |
 | Metrics | Done: latency, tokens and estimated cost per answer and per session, in blocks you can hide. |
 | Cost control | Done: starts paused; run, pause, single step, pacing and limits on rounds and estimated spend. |
-| Your own video | Planned: local `.mp4` / `.webm` files besides the samples and the server webcam. |
+| Your own video | Done: `.mp4` / `.webm` files in `media/`, picked in the page besides the samples and the server webcam. Not tried with a real browser recording yet. |
 
 Design choices behind the plan:
 
@@ -465,6 +472,7 @@ video_handling/          capture, clip recording, streaming
 prompting/               prompt state, runtime settings, history
 src/                     frontend
 presets/, static_video/  built-in prompts, sample videos
+media/                   your own videos (created at start, git-ignored)
 tests/                   GPU-free test suite
 ```
 
