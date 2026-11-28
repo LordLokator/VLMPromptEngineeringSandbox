@@ -18,6 +18,7 @@ import time
 from typing import Any
 
 from utils.providers import GenerateRequest, ModelInfo, Result
+from utils.providers.pricing import estimate
 from utils.providers.settings import ANTHROPIC_URL, TIMEOUT_S, ProviderConfigError, check_model_id, env
 
 
@@ -94,18 +95,21 @@ class AnthropicProvider:
         cache_write = _int(getattr(usage, "cache_creation_input_tokens", None))
         input_tokens = None if uncached is None else uncached + (cache_read or 0) + (cache_write or 0)
         details = getattr(usage, "output_tokens_details", None)
+        output_tokens = _int(getattr(usage, "output_tokens", None))
+        cost, cost_source = estimate(self.provider, self.model, uncached_input=uncached, cache_read=cache_read or 0,
+                                     cache_write=cache_write or 0, output=output_tokens)
         return Result(
             text=text,
             finish_reason=getattr(response, "stop_reason", None),
             requested_model=self.model,
             reported_model=getattr(response, "model", None),
             input_tokens=input_tokens,
-            output_tokens=_int(getattr(usage, "output_tokens", None)),
+            output_tokens=output_tokens,
             cached_tokens=cache_read,
             reasoning_tokens=_int(getattr(details, "thinking_tokens", None)),
             latency_ms=latency_ms,
-            cost_usd=None,
-            cost_source=None,
+            cost_usd=cost,
+            cost_source=cost_source,
             params_sent={"max_tokens": request.max_output_tokens, "frames": len(request.frames)},
         )
 

@@ -261,9 +261,16 @@ python -m utils.providers.check ollama <model> --fps 3       # 2 of the 5 frames
 Providers: `openai`, `anthropic`, `ollama`, `compat` (and `demo`). Anthropic gets no `temperature`: the API version
 the pinned SDK sends rejects sampling parameters. One call sends up to 5 frames (at most 768 px on the long edge)
 and asks for at most 1024 output tokens; a paid provider charges for it. It prints the answer, finish reason, token
-counts, latency and the parameters actually sent, never the key. If a model rejects `temperature`, the call is
+counts, latency, estimated cost and the parameters actually sent, never the key. If a model rejects `temperature`, the call is
 repeated once without it, and that model is not sent one again during the run. **The adapters are unit-tested only:
 none has answered a real call yet** (they were checked against a local stub server).
+
+**Cost estimates** come from a price snapshot in [`utils/prices.json`](utils/prices.json): list prices of OpenAI and
+Anthropic vision models, standard tier, taken on 2026-11-28 from [LiteLLM's price
+map](https://github.com/BerriAI/litellm) (MIT licence, notice in the file). Only exact model ids match. An unknown
+model, cache tokens without a rate, or input above a long-context limit give "n/a", never $0. Ollama on this machine
+has no API fee; `compat` and remote or cloud Ollama models are unpriced, unless the server reports the cost itself
+(as OpenRouter does in `usage.cost`), which then wins. The estimate is not a bill.
 
 ## Hardware and performance
 

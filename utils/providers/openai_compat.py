@@ -17,6 +17,7 @@ import time
 from typing import Any
 
 from utils.providers import GenerateRequest, ModelInfo, Result
+from utils.providers.pricing import estimate
 from utils.providers.settings import (
     OLLAMA_DEFAULT_URL,
     OLLAMA_TIMEOUT_S,
@@ -158,18 +159,30 @@ class OpenAICompatProvider:
         usage = getattr(response, "usage", None)
         sent = {key: value for key, value in params.items() if key not in ("model", "messages")}
         sent["frames"] = sum(1 for part in params["messages"][1]["content"] if part["type"] == "image_url")
+        input_tokens = _int_or_none(_field(usage, "prompt_tokens"))
+        output_tokens = _int_or_none(_field(usage, "completion_tokens"))
+        cached = _int_or_none(_field(usage, "prompt_tokens_details", "cached_tokens"))
+        written = _int_or_none(_field(usage, "prompt_tokens_details", "cache_write_tokens"))
+        uncached = None if input_tokens is None else input_tokens - (cached or 0) - (written or 0)
+        cost, cost_source = estimate(
+            self.provider, self.model, base_url=self.base_url,
+            uncached_input=uncached if uncached is None or uncached >= 0 else None,
+            cache_read=cached or 0, cache_write=written or 0, output=output_tokens,
+            # OpenRouter and some other compatible servers report the charge in usage.cost.
+            reported_cost=_field(usage, "cost") if self.provider == "compat" else None,
+        )
         return Result(
             text=str(text),
             finish_reason=finish_reason,
             requested_model=self.model,
             reported_model=_field(response, "model"),
-            input_tokens=_int_or_none(_field(usage, "prompt_tokens")),
-            output_tokens=_int_or_none(_field(usage, "completion_tokens")),
-            cached_tokens=_int_or_none(_field(usage, "prompt_tokens_details", "cached_tokens")),
+            input_tokens=input_tokens,
+            output_tokens=output_tokens,
+            cached_tokens=cached,
             reasoning_tokens=_int_or_none(_field(usage, "completion_tokens_details", "reasoning_tokens")),
             latency_ms=latency_ms,
-            cost_usd=None,
-            cost_source=None,
+            cost_usd=cost,
+            cost_source=cost_source,
             params_sent=sent,
         )
 
