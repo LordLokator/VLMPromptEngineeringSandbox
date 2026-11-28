@@ -258,7 +258,6 @@ from another origin are rejected (code 1008). HTTP requests and WebSocket connec
 |---|---|
 | `GET /` | Web UI (static assets under `/src`) |
 | `GET /favicon.ico` | Page icon |
-| `GET /presets/<file>` | Static files from `presets/`, including saved user presets |
 | `GET /video_feed` | MJPEG preview of the active source, at most 720 px high |
 | `GET /preset_buttons` | Built-in and user presets, as a list of `{"label", "text"}` |
 | `POST /save_preset` | JSON `{"label", "text"}`; the label is trimmed to 25 characters. Returns `{"status": "ok", "label"}`, or an error with status 400 or 415. |

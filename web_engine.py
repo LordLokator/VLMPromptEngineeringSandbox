@@ -90,8 +90,8 @@ app.add_middleware(SafeErrors)
 app.add_middleware(TrustedHostMiddleware, allowed_hosts=[*LOOPBACK_HOSTS, *EXTRA_HOSTS], www_redirect=False)
 
 # Serve static frontend
+# Only the frontend is static. presets/ is not mounted: it holds the prompts users saved; /preset_buttons serves them.
 app.mount("/src", StaticFiles(directory=BASE_DIR / "src"), name="src")
-app.mount("/presets", StaticFiles(directory=BASE_DIR / "presets"), name="presets")
 
 
 @app.get("/")
