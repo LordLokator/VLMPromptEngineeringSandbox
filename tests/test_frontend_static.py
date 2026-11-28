@@ -28,7 +28,8 @@ def test_single_send_and_fetch_helpers():
 def test_images_only_from_checked_jpeg_data_urls():
     assert re.findall(r"\.src\s*=", JS) == [".src =", ".src ="]  # thumbnails and the preview reload
     render = function_body("renderRound")
-    assert "filter(isJpegDataUrl)" in render
+    assert "filter(isJpegDataUrl)" in render and "thumbs.map(jpegObjectUrl)" in render
+    assert "img.src = url;  // a blob: URL" in render and "URL.revokeObjectURL" in render
     check = function_body("isJpegDataUrl")
     assert 'startsWith("data:image/jpeg;base64,")' in check and "[A-Za-z0-9+/]" in check
     assert "/video_feed?ts=" in JS
@@ -47,6 +48,12 @@ def test_speaks_the_typed_protocol_only():
         assert f'type: "{kind}"' in JS
     assert "role:" not in JS and "toggle_stream" not in JS and '"vlm"' not in JS
     assert 'confirm === "webcam_remote"' in JS and "confirm: true" in JS
+
+
+def test_slot_names_from_the_server_are_checked():
+    assert "Object.create(null)" in JS
+    first_line = function_body("renderResult").splitlines()[1].strip()
+    assert first_line.startswith("if (!SLOTS.includes(data.slot)")
 
 
 def test_stale_results_do_not_replace_the_live_answer():
@@ -92,7 +99,7 @@ def test_sliders_keep_their_ranges():
 
 
 def test_page_has_no_unprotected_external_assets():
-    tags = re.findall(r"<(?:script|link)[^>]*>", HTML)
+    tags = re.findall(r"<(?:script|link)[^>]*>", HTML, re.IGNORECASE)
     bad = [t for t in tags if re.search(r"(?:src|href)=[\"']?(?:https?:)?//", t) and "integrity=" not in t]
     assert bad == []
     assert (SRC / "vendor" / "bootstrap.min.css").is_file()

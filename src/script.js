@@ -20,7 +20,8 @@ const saveBtn = $("savePresetBtn");
 
 let state = null;  // last `state` frame
 const rounds = new Map();  // round id -> {start_s, end_s, label}
-const cards = {};  // slot -> {el, role(name), totals, latest}
+const cards = Object.create(null);  // slot ("A" or "B" only) -> {el, role(name), totals, latest}
+let thumbUrls = [];  // object URLs of the strip's thumbnails, revoked when replaced
 let lastRequest = {};  // request type -> frame, for a confirmed resend
 
 // ---- helpers ------------------------------------------------------------------------------------------------
@@ -35,6 +36,14 @@ function el(tag, className, text) {
 function isJpegDataUrl(value) {
     return typeof value === "string" && value.startsWith("data:image/jpeg;base64,")
         && /^[A-Za-z0-9+/]*={0,2}$/.test(value.slice("data:image/jpeg;base64,".length));
+}
+
+// A checked JPEG data URL -> an object URL of its bytes. The page never uses a server string as a URL.
+function jpegObjectUrl(dataUrl) {
+    const binary = atob(dataUrl.slice("data:image/jpeg;base64,".length));
+    const bytes = new Uint8Array(binary.length);
+    for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
+    return URL.createObjectURL(new Blob([bytes], { type: "image/jpeg" }));
 }
 
 function num(value) {
@@ -232,10 +241,12 @@ function renderRound(data) {
     const strip = $("strip");
     const thumbs = Array.isArray(data.thumbnails) ? data.thumbnails.filter(isJpegDataUrl) : [];
     const times = Array.isArray(data.frame_times) ? data.frame_times : [];
-    strip.replaceChildren(...thumbs.map((url, i) => {
+    thumbUrls.forEach((url) => URL.revokeObjectURL(url));
+    thumbUrls = thumbs.map(jpegObjectUrl);
+    strip.replaceChildren(...thumbUrls.map((url, i) => {
         const figure = el("figure", "thumb mb-0");
         const img = el("img");
-        img.src = url;  // checked above: a JPEG data URL, nothing else
+        img.src = url;  // a blob: URL made from checked JPEG bytes
         img.alt = `Frame ${i + 1}`;
         figure.append(img, el("figcaption", null, num(times[i]) ? `${times[i].toFixed(2)} s` : ""));
         return figure;
@@ -250,8 +261,8 @@ function renderRound(data) {
 }
 
 function renderResult(data) {
+    if (!SLOTS.includes(data.slot) || !num(data.round_id)) return;
     const card = cards[data.slot];
-    if (!card || !num(data.round_id)) return;
     const r = card.role;
     const metrics = data.metrics || {};
     const ok = data.status === "ok";
