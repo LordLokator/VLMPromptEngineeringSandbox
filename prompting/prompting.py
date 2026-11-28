@@ -8,6 +8,7 @@ from loguru import logger
 
 from utils.file_management import BASE_DIR
 from utils.json_management import append_dict_to_json
+from video_handling.sampling import loader_indices
 
 HISTORY_FILE = BASE_DIR / "prompting" / "history.json"  # tests patch this
 
@@ -91,14 +92,9 @@ class RuntimeSettings:
         return self.effective_resample_fps(v)
 
     def effective_resample_fps(self, requested: int | None = None) -> float:
-        """Frames the model gets per second of clip.
-
-        Mirrors frame_sample(mode='fps') in the pinned processing_videollama3.py: it takes every stride-th frame,
-        starting half a stride in. The stride is floor(clip_fps / fps), at most the clip's frame count.
-        """
+        """Frames the model gets per second of clip (rule: video_handling.sampling.loader_indices)."""
         v = self.get_resample_fps() if requested is None else requested
-        stride = min(self._clip_fps // v, self._clip_frames)
-        sampled = len(range(stride // 2, self._clip_frames, stride))
+        sampled = len(loader_indices(self._clip_frames, self._clip_fps, v))
         return sampled * self._clip_fps / self._clip_frames
 
 

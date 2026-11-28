@@ -75,3 +75,41 @@ def test_resample_rejects_non_numeric():
 def test_resample_rejects_infinity():
     with pytest.raises(ValueError):
         RuntimeSettings().set_resample_fps(float("inf"))
+
+
+@pytest.mark.parametrize("v", sorted(LOADER_FRAMES))
+def test_agent_frames_match_loader_frames(v):
+    """API agents get the frames the local model's loader picks from the same clip."""
+    from video_handling.sampling import loader_indices
+
+    indices = loader_indices(5, 10, v)
+    assert len(indices) == LOADER_FRAMES[v]
+    assert indices == sorted(set(indices)) and all(0 <= i < 5 for i in indices)
+
+
+@pytest.mark.parametrize("n, fps, expected", [
+    (0, 10, []), (1, 1, [0]), (1, 10, [0]), (3, 1, [1]), (3, 3, [1]), (3, 10, [0, 1, 2]),
+    (5, 0, [2]), (5, 99, list(range(5))),
+])
+def test_loader_indices_on_short_clips_and_out_of_range_fps(n, fps, expected):
+    from video_handling.sampling import loader_indices
+
+    assert loader_indices(n, 10, fps) == expected
+
+
+def test_jpeg_long_edge_and_quality():
+    import cv2
+    import numpy as np
+
+    from video_handling.write_video import encode_jpeg
+
+    def size(jpeg):
+        return cv2.imdecode(np.frombuffer(jpeg, np.uint8), cv2.IMREAD_COLOR).shape[:2]
+
+    frame = np.random.default_rng(1).integers(0, 255, (1080, 1920, 3), dtype=np.uint8)
+    assert size(encode_jpeg(frame)) == (432, 768)
+    assert size(encode_jpeg(frame[:, :600])) == (768, 427)  # portrait: the height is the long edge
+    assert size(encode_jpeg(frame[:100, :200])) == (100, 200)  # never scaled up
+    small = frame[:100, :200]
+    ok, expected = cv2.imencode(".jpg", small, [cv2.IMWRITE_JPEG_QUALITY, 80])
+    assert encode_jpeg(small) == expected.tobytes()

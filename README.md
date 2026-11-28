@@ -145,7 +145,9 @@ Design choices:
 - **One inference at a time, no queue.** Clips that arrive while the model is busy are dropped, so answers do not fall
   further and further behind the video.
 - **Every agent has one contract** (`utils/providers/`): `generate(request) -> Result`. The request carries the clip's
-  frames as JPEG with their times, the prompt and the settings of that round, and the clip file for the local model. The
+  frames as JPEG with their times, the prompt and the settings of that round, and the clip file for the local model.
+  The frames are the ones the local model's loader picks at the resample FPS, scaled to at most 768 px on the long edge
+  at JPEG quality 80, and the same bytes go to every agent. The
   result carries the text, latency, tokens and cost where the provider reports them (`None` otherwise), and the
   parameters actually sent. Agent A is chosen at startup with `VLM_AGENT_A`.
 - **All GPU code sits in `utils/vlm_wrapper.py`**, with lazy imports, so everything else is testable without torch.

@@ -25,6 +25,23 @@ SEC = 0.5 # Buffer in seconds
 MAX_FRAMES = 20
 
 
+def build_request(
+    clip: ClipSample, *, prompt: str, temperature: float, fps: int, max_frames: int, clip_fps: int = FPS
+) -> GenerateRequest:
+    """One round's request. Every agent gets the same one, so API agents get byte-identical frames."""
+    frames, times = clip.frames_at(fps, clip_fps)
+    return GenerateRequest(
+        frames=frames,
+        frame_times=times,
+        system=SYSTEM_PROMPT,
+        prompt=prompt,
+        temperature=temperature,
+        video_path=clip.video_path,
+        fps=fps,
+        max_frames=max_frames,
+    )
+
+
 def process_clip(
     clip: ClipSample,
     agent: Provider,
@@ -41,16 +58,7 @@ def process_clip(
         start = timeit.default_timer()
 
         fps, temperature = get_fps(), get_temperature()
-        request = GenerateRequest(
-            frames=clip.frames,
-            frame_times=clip.frame_times,
-            system=SYSTEM_PROMPT,
-            prompt=get_prompt(),
-            temperature=temperature,
-            video_path=clip.video_path,
-            fps=fps,
-            max_frames=max_frames,
-        )
+        request = build_request(clip, prompt=get_prompt(), temperature=temperature, fps=fps, max_frames=max_frames)
         with telemetry.inference(agent.label, fps, max_frames, temperature):
             result = agent.generate(request)
 

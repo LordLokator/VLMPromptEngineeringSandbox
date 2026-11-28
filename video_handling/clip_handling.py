@@ -10,7 +10,7 @@ from loguru import logger
 
 from utils.errors import log_failure
 from utils.file_management import BASE_DIR, delete_files, full_path
-from video_handling.sampling import GridSampler, Segment
+from video_handling.sampling import GridSampler, Segment, loader_indices
 from video_handling.streaming import CaptureHub
 from video_handling.write_video import encode_jpeg, write_video
 
@@ -29,8 +29,13 @@ class ClipSample:
     end_s: float
     loop: int | None  # pass through the file, from 0; None for the webcam
     video_path: str
-    frames: tuple[bytes, ...] = ()  # the sampled frames as JPEG, in time order
+    frames: tuple[bytes, ...] = ()  # every frame of the clip as JPEG (long edge <= 768, quality 80), in time order
     frame_times: tuple[float, ...] = ()  # when each frame is shown, same clock as start_s
+
+    def frames_at(self, fps: int, clip_fps: int) -> tuple[tuple[bytes, ...], tuple[float, ...]]:
+        """The frames (and their times) an agent gets at resample `fps`: the same bytes for every agent."""
+        picked = loader_indices(len(self.frames), clip_fps, fps)
+        return tuple(self.frames[i] for i in picked), tuple(self.frame_times[i] for i in picked)
 
 
 class ClipRecorder:

@@ -12,6 +12,20 @@ MAX_TIMESTAMP_GAP_S = 10.0
 EPS = 1e-3  # decoder timestamps are milliseconds in floating point
 
 
+def loader_indices(n_frames: int, clip_fps: int, fps: int) -> list[int]:
+    """Which of a clip's frames the model sees at `fps`; the same rule for every agent.
+
+    Mirrors frame_sample(mode='fps') in the pinned processing_videollama3.py, which the local model's loader runs on
+    the clip file: every stride-th frame, starting half a stride in, with stride floor(clip_fps / fps), at most the
+    clip's frame count. `fps` is clamped to 1..clip_fps. A clip shorter than expected uses its real frame count.
+    """
+    if n_frames <= 0:
+        return []
+    fps = min(max(int(fps), 1), clip_fps)
+    stride = min(clip_fps // fps, n_frames)
+    return list(range(stride // 2, n_frames, stride))
+
+
 def sane_fps(reported: float) -> float:
     """The reported frame rate if it is plausible, else 30. Some containers report 0, NaN or 1000."""
     return reported if math.isfinite(reported) and 1.0 <= reported <= MAX_SANE_FPS else DEFAULT_FPS

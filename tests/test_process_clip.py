@@ -99,8 +99,26 @@ def test_request_carries_the_round_settings_and_the_clip():
     )
     (request,) = vlm.requests
     assert (request.prompt, request.temperature, request.fps, request.max_frames) == ("count the cars", 0.3, 3, 20)
-    assert (request.frames, request.frame_times, request.video_path) == (frames, times, "c.mp4")
+    assert (request.frames, request.frame_times, request.video_path) == (frames[1:], times[1:], "c.mp4")  # stride 2
     assert request.system
+
+
+def test_two_agents_get_byte_identical_frames():
+    import cv2
+    import numpy as np
+
+    from main import build_request
+    from video_handling.write_video import encode_jpeg
+
+    rng = np.random.default_rng(0)
+    jpegs = tuple(encode_jpeg(rng.integers(0, 255, (1080, 1920, 3), dtype=np.uint8)) for _ in range(5))
+    clip = ClipSample(0, "sample:1", 0, "Sample 1", 0.0, 0.5, 0, "c.mp4", jpegs, (0.0, 0.1, 0.2, 0.3, 0.4))
+    agents = (FakeVLM(), FakeVLM())
+    for agent in agents:
+        agent.generate(build_request(clip, prompt="p", temperature=0.2, fps=3, max_frames=20))
+    a, b = (agent.requests[0] for agent in agents)
+    assert a.frames == b.frames and a.frame_times == b.frame_times == (0.1, 0.4)
+    assert [cv2.imdecode(np.frombuffer(f, np.uint8), cv2.IMREAD_COLOR).shape[:2] for f in a.frames] == [(432, 768)] * 2
 
 
 def test_clip_deleted_after_ok_and_error(tmp_path):
