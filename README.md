@@ -58,7 +58,7 @@ app: see [Checking a provider](#checking-a-provider).
   same 0.5 s moment; the page shows those frames, the moment's time range and which round each answer is about.
 - **Agents chosen in the page:** provider and model per side, from the provider's model list where it offers one (free
   text always works). An unavailable provider says why, for example a missing key.
-- **Per answer:** latency, input and output tokens, estimated cost ("n/a" when unknown, "no API fee" for local agents),
+- **Per answer:** latency, input and output tokens, estimated cost ("n/a" when unknown, "no API fee" for the local model and Ollama on this machine),
   the model and the parameters actually sent; session totals per agent. "Faster" and "cheaper" are marked only when
   both answered the same round with known values; there is no quality verdict. A **Metrics** switch hides the figures.
 - **Spend control:** Run, Pause and Step (one round). The budget is refilled only by "Reset budget". An authentication
@@ -359,7 +359,7 @@ OTEL_ENABLED=1 OTEL_TRACES_EXPORTER=otlp OTEL_METRICS_EXPORTER=otlp \
 
 | Signal | Name | Notes |
 |---|---|---|
-| Span | `vlm.inference` | One per processed clip: agent (`provider:model`), FPS, max frames, temperature; on failure, error status and exception type (no message or stack trace). |
+| Span | `vlm.inference` | One per agent call: agent (`provider:model`), FPS, max frames, temperature; on failure, error status and exception type (no message or stack trace). |
 | Histogram | `vlm.inference.duration` | Seconds, by agent and outcome. |
 | Counter | `vlm.inference.errors` | By agent. |
 | Counter | `vlm.clips.dropped` | Clips skipped while a round was running. |
